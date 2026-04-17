@@ -9,8 +9,11 @@ const authenticateToken = asyncHandler(async (req, res, next) => {
     : null;
 
   const cookieToken = req.cookies?.accessToken;
+  const headerToken = req.headers["x-access-token"];
+  const queryToken = req.query?.accessToken;
+  const bodyToken = req.body?.accessToken;
 
-  const token = bearerToken || cookieToken;
+  const token = bearerToken || headerToken || cookieToken || queryToken || bodyToken;
 
   if (!token) {
     throw new ApiError(401, "Access token is missing");
@@ -19,7 +22,7 @@ const authenticateToken = asyncHandler(async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
     req.user = {
-      userId: decoded._id,
+      userId: decoded.userId,
       ...decoded,
     };
     next();
