@@ -1,7 +1,7 @@
 import { asyncHandler } from "../utils/async-handler.utils.js";
 import { User } from "../models/user.model.js";
-import { generateAccessToken } from "../utils/tokenUtils.js";
-import { ApiError } from "../utils/apiError.js";
+import { generateAccessToken } from "../utils/jwt.utils.js";
+import { ApiError } from "../utils/api-error.utils.js";
 import crypto from "crypto";
 
 import {
