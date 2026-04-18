@@ -15,11 +15,15 @@ import { rateLimiter } from "./middleware/rateLimiter.middlewares.js";
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
 
+const normalizeOrigin = (value) => value?.trim().replace(/\/+$/, "");
+
 const getAllowedOrigins = () => {
-  if (process.env.FRONTEND_URL) {
+  const frontendUrl = normalizeOrigin(process.env.FRONTEND_URL);
+
+  if (frontendUrl) {
     return isProduction
-      ? [process.env.FRONTEND_URL]
-      : [process.env.FRONTEND_URL, "http://localhost:5173", "http://127.0.0.1:5173"];
+      ? [frontendUrl]
+      : [frontendUrl, "http://localhost:5173", "http://127.0.0.1:5173"];
   }
 
   if (isProduction) {
@@ -32,6 +36,21 @@ const getAllowedOrigins = () => {
 if (process.env.TRUST_PROXY === "1" || process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
+
+app.use((req, res, next) => {
+  console.log("[request]", {
+    method: req.method,
+    path: req.originalUrl,
+    origin: req.headers.origin || null,
+    referer: req.headers.referer || null,
+    host: req.headers.host || null,
+    userAgent: req.headers["user-agent"] || null,
+    hasCookieHeader: Boolean(req.headers.cookie),
+    hasAuthorizationHeader: Boolean(req.headers.authorization),
+  });
+
+  next();
+});
 
 // Security headers – applied before any routes.
 // HSTS tells browsers to always use HTTPS for this origin (resolves Chrome Safe Browsing warnings

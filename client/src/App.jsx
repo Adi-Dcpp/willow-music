@@ -33,7 +33,6 @@ function RouteTransition() {
         <Routes location={location}>
           <Route path="/" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
           <Route path="/callback" element={<CallbackPage />} />
-          <Route path="/auth/callback" element={<CallbackPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/snapshot" element={<ProtectedRoute><SnapshotPage /></ProtectedRoute>} />
           <Route path="/share/:id" element={<SharePage />} />
@@ -128,7 +127,6 @@ function App() {
   const showNav =
     location.pathname !== "/" &&
     location.pathname !== "/callback" &&
-    location.pathname !== "/auth/callback" &&
     !location.pathname.startsWith("/share/");
 
   return (

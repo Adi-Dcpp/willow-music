@@ -23,15 +23,18 @@ const MONGODB_DUPLICATE_KEY_ERROR = 11000;
 
 const isProduction = process.env.NODE_ENV === "production";
 
+const normalizeOrigin = (value) => value?.trim().replace(/\/+$/, "");
+
 const authCookieOptions = {
   httpOnly: true,
   sameSite: "none",
   secure: true,
+  path: "/",
 };
 
 const getFrontendUrl = () => {
   if (process.env.FRONTEND_URL) {
-    return process.env.FRONTEND_URL;
+    return normalizeOrigin(process.env.FRONTEND_URL);
   }
 
   if (isProduction) {
@@ -264,11 +267,15 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000,
   });
 
-  if (!isProduction) {
-    console.log("Spotify auth success");
-  }
+  console.log("[auth] cookies set", {
+    userId: String(user._id),
+    spotifyUserId: user.spotifyUserId,
+    accessTokenCookie: true,
+    refreshTokenCookie: true,
+    redirectTo: `${frontendURL}/callback`,
+  });
 
-  const redirectUrl = `${frontendURL}/dashboard`;
+  const redirectUrl = `${frontendURL}/callback`;
   return res.redirect(redirectUrl);
 });
 
@@ -291,4 +298,30 @@ const logout = asyncHandler(async (req, res) => {
   });
 });
 
-export { loginWithSpotify, spotifyCallback, logout };
+const getSession = asyncHandler(async (req, res) => {
+  if (!req.user?.userId) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const user = await User.findById(req.user.userId).select(
+    "spotifyUserId displayName profileImage spotifyEmail spotifyScopes"
+  );
+
+  if (!user) {
+    throw new ApiError(404, "User does not exist");
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Session fetched successfully",
+    data: {
+      spotifyUserId: user.spotifyUserId,
+      displayName: user.displayName,
+      profileImage: user.profileImage,
+      spotifyEmail: user.spotifyEmail,
+      spotifyScopes: user.spotifyScopes || [],
+    },
+  });
+});
+
+export { loginWithSpotify, spotifyCallback, logout, getSession };
