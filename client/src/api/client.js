@@ -1,7 +1,21 @@
 import axios from "axios";
 
+const getApiBaseUrl = () => {
+  const apiUrl = import.meta.env.VITE_API_URL;
+
+  if (apiUrl) {
+    return apiUrl;
+  }
+
+  if (import.meta.env.DEV) {
+    return "http://127.0.0.1:5000/api";
+  }
+
+  throw new Error("VITE_API_URL must be set in production");
+};
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://127.0.0.1:5000/api",
+  baseURL: getApiBaseUrl(),
   withCredentials: true,
 });
 

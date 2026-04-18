@@ -4,6 +4,20 @@ import GlowButton from "../components/common/GlowButton";
 import FooterLinks from "../components/common/FooterLinks";
 import { useTheme } from "../context/ThemeContext";
 
+const getApiBaseUrl = () => {
+  const apiUrl = import.meta.env.VITE_API_URL;
+
+  if (apiUrl) {
+    return apiUrl;
+  }
+
+  if (import.meta.env.DEV) {
+    return "http://127.0.0.1:5000/api";
+  }
+
+  throw new Error("VITE_API_URL must be set in production");
+};
+
 const features = [
   { icon: "🎭", label: "Music Identity" },
   { icon: "🧠", label: "Taste Insights" },
@@ -22,7 +36,7 @@ export default function LoginPage() {
   const location = useLocation();
 
   const onLogin = () => {
-    window.location.href = `${import.meta.env.VITE_API_URL || "http://localhost:5000/api"}/auth/spotify/login`;
+    window.location.href = `${getApiBaseUrl()}/auth/spotify/login`;
   };
 
   return (

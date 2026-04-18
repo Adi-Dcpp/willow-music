@@ -16,6 +16,26 @@ const REQUIRED_SPOTIFY_SCOPES = [
 
 const STATE_TTL_MS = 5 * 60 * 1000;
 
+const isProduction = process.env.NODE_ENV === "production";
+
+const authCookieOptions = {
+  httpOnly: true,
+  sameSite: isProduction ? "none" : "lax",
+  secure: isProduction,
+};
+
+const getFrontendUrl = () => {
+  if (process.env.FRONTEND_URL) {
+    return process.env.FRONTEND_URL;
+  }
+
+  if (isProduction) {
+    throw new ApiError(500, "FRONTEND_URL is required in production");
+  }
+
+  return "http://localhost:5173";
+};
+
 const getStateSecret = () =>
   process.env.SPOTIFY_CLIENT_SECRET || process.env.ACCESS_TOKEN_SECRET;
 
@@ -99,7 +119,7 @@ const loginWithSpotify = asyncHandler(async (req, res) => {
 
 const spotifyCallback = asyncHandler(async (req, res) => {
   const { code, state, error } = req.query;
-  const frontendURL = process.env.FRONTEND_URL || "http://localhost:5173";
+  const frontendURL = getFrontendUrl();
 
   if (error) {
     return res.redirect(`${frontendURL}/auth/callback?error=spotify_auth_failed`);
@@ -173,16 +193,12 @@ const spotifyCallback = asyncHandler(async (req, res) => {
   });
 
   res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    ...authCookieOptions,
     maxAge: 15 * 60 * 1000,
   });
 
   res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    ...authCookieOptions,
     maxAge: 24 * 60 * 60 * 1000,
   });
 
@@ -191,21 +207,15 @@ const spotifyCallback = asyncHandler(async (req, res) => {
 
 const logout = asyncHandler(async (req, res) => {
   res.clearCookie("accessToken", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    ...authCookieOptions,
   });
 
   res.clearCookie("refreshToken", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    ...authCookieOptions,
   });
 
   res.clearCookie("spotify_auth_state", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    ...authCookieOptions,
   });
 
   return res.status(200).json({

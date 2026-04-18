@@ -3,6 +3,14 @@ import jwt from "jsonwebtoken";
 import { asyncHandler } from "../utils/async-handler.utils.js";
 import { generateAccessToken } from "../utils/jwt.utils.js";
 
+const isProduction = process.env.NODE_ENV === "production";
+
+const authCookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
+};
+
 const issueAccessTokenFromRefresh = (req, res) => {
   const refreshToken = req.cookies?.refreshToken;
 
@@ -22,9 +30,7 @@ const issueAccessTokenFromRefresh = (req, res) => {
     });
 
     res.cookie("accessToken", newAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      ...authCookieOptions,
       maxAge: 15 * 60 * 1000,
     });
 

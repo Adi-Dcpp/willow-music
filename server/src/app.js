@@ -12,16 +12,27 @@ import { globalErrorHandler } from "./middleware/error.middlewares.js";
 import { rateLimiter } from "./middleware/rateLimiter.middlewares.js";
 
 const app = express();
+const isProduction = process.env.NODE_ENV === "production";
+
+const getAllowedOrigins = () => {
+  if (process.env.FRONTEND_URL) {
+    return isProduction
+      ? [process.env.FRONTEND_URL]
+      : [process.env.FRONTEND_URL, "http://localhost:5173", "http://127.0.0.1:5173"];
+  }
+
+  if (isProduction) {
+    throw new Error("FRONTEND_URL is required in production");
+  }
+
+  return ["http://localhost:5173", "http://127.0.0.1:5173"];
+};
 
 if (process.env.TRUST_PROXY === "1" || process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
-const allowedOrigins = new Set([
-  process.env.FRONTEND_URL,
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-]);
+const allowedOrigins = new Set(getAllowedOrigins());
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -48,8 +59,10 @@ app.get("/healthz", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
+app.use("/api/me", userRoutes);
 app.use("/api/top", spotifyRoutes);
 app.use("/api/share", snapshotRoutes);
+app.use("/api/snapshots", snapshotRoutes);
 app.use("/api/og", ogRoutes);
 app.use("/api/ai", aiRoutes);
 /**
