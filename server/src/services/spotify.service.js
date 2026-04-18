@@ -8,6 +8,19 @@ const getSpotifyAuthHeader = () =>
     `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`,
   ).toString("base64");
 
+const getSpotifyRedirectUri = () => {
+  if (process.env.BACKEND_URL) {
+    const normalizedBackendUrl = process.env.BACKEND_URL.replace(/\/+$/, "");
+    return `${normalizedBackendUrl}/api/auth/spotify/callback`;
+  }
+
+  if (process.env.SPOTIFY_REDIRECT_URI) {
+    return process.env.SPOTIFY_REDIRECT_URI;
+  }
+
+  throw new ApiError(500, "BACKEND_URL or SPOTIFY_REDIRECT_URI is required");
+};
+
 // 1. Get Spotify Auth URL
 const getSpotifyAuthURL = ({ state }) => {
   const baseURL = "https://accounts.spotify.com/authorize";
@@ -15,7 +28,7 @@ const getSpotifyAuthURL = ({ state }) => {
   const params = new URLSearchParams({
     client_id: process.env.SPOTIFY_CLIENT_ID,
     response_type: "code",
-    redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
+    redirect_uri: getSpotifyRedirectUri(),
     show_dialog: "true",
     scope: [
       "user-top-read",
@@ -34,7 +47,7 @@ const exchangeCodeForToken = async ({ code }) => {
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
+      redirect_uri: getSpotifyRedirectUri(),
     });
 
     const headers = {
@@ -194,4 +207,5 @@ export {
   refreshSpotifyAccessToken,
   getUserTopTracks,
   getUserTopArtists,
+  getSpotifyRedirectUri,
 };

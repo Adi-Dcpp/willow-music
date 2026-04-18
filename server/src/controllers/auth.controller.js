@@ -122,7 +122,7 @@ const spotifyCallback = asyncHandler(async (req, res) => {
   const frontendURL = getFrontendUrl();
 
   if (error) {
-    return res.redirect(`${frontendURL}/auth/callback?error=spotify_auth_failed`);
+    return res.redirect(`${frontendURL}?error=spotify_auth_failed`);
   }
 
   if (!code) {
@@ -145,7 +145,7 @@ const spotifyCallback = asyncHandler(async (req, res) => {
 
   if (missingScopes.length) {
     return res.redirect(
-      `${frontendURL}/auth/callback?error=missing_scopes&missing=${encodeURIComponent(
+      `${frontendURL}?error=missing_scopes&missing=${encodeURIComponent(
         missingScopes.join(",")
       )}`
     );
@@ -202,7 +202,7 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000,
   });
 
-  return res.redirect(`${frontendURL}/auth/callback`);
+  return res.redirect(`${frontendURL}`);
 });
 
 const logout = asyncHandler(async (req, res) => {

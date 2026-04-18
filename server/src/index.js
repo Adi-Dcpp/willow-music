@@ -11,9 +11,9 @@ const validateProductionEnv = () => {
 
   const requiredVars = [
     "MONGODB_URI",
+    "BACKEND_URL",
     "SPOTIFY_CLIENT_ID",
     "SPOTIFY_CLIENT_SECRET",
-    "SPOTIFY_REDIRECT_URI",
     "FRONTEND_URL",
     "ACCESS_TOKEN_SECRET",
     "REFRESH_TOKEN_SECRET",
