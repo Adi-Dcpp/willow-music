@@ -78,7 +78,7 @@ npm run dev
 - Root directory: `client`
 - Build command: `npm run build`
 - Output directory: `dist`
-- `vercel.json` lives inside `client/` (the configured Root Directory) so Vercel picks up the SPA rewrites
+- SPA fallback config exists in both `client/vercel.json` and root `vercel.json` to cover either Vercel Root Directory setup
 - Set `VITE_API_BASE_URL` to the Render backend URL (without `/api`)
 
 ### Spotify OAuth
