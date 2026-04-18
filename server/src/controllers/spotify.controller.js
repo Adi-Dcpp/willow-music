@@ -6,15 +6,12 @@ import {
   getUserTopTracks,
   getUserTopArtists,
 } from "../services/spotify.service.js";
-import {
-  getCache,
-  setCache
-} from "../utils/cache.utils.js";
+import { getCache, setCache } from "../utils/cache.utils.js";
+import { calculateTasteDrift, getTopGenres } from "../utils/insight.utils.js";
 
 const getValidSpotifyAccessToken = async (user) => {
-  const bufferTime = 60 * 1000; // 1 min safety buffer
+  const bufferTime = 60 * 1000;
 
-  // if token still valid
   if (user.tokenExpiresAt && Date.now() < user.tokenExpiresAt - bufferTime) {
     return user.accessToken;
   }
@@ -139,18 +136,22 @@ const getTop = asyncHandler(async (req, res) => {
   const { timeRange = "medium_term", limit = 20 } = req.query;
   const parsedLimit = validateQuery(timeRange, limit);
 
-  const cacheKey = `${userId}_${timeRange}_${parsedLimit}`;
+  const cacheKey = `${userId}_${timeRange}_${parsedLimit}_insights`;
 
   const cachedData = getCache(cacheKey);
   if (cachedData) {
     return res.status(200).json(
-      new ApiResponse(200, "Fetched from cache", cachedData)
+      new ApiResponse(
+        200,
+        "Top data fetched successfully (cached)",
+        cachedData
+      )
     );
   }
 
   const accessToken = user.accessToken;
 
-  const [topTracks, topArtists] = await Promise.all([
+  const [topTracks, topArtists, shortArtists, longArtists] = await Promise.all([
     getUserTopTracks({
       accessToken,
       timeRange,
@@ -161,12 +162,33 @@ const getTop = asyncHandler(async (req, res) => {
       timeRange,
       limit: parsedLimit,
     }),
+    getUserTopArtists({
+      accessToken,
+      timeRange: "short_term",
+      limit: 20,
+    }),
+    getUserTopArtists({
+      accessToken,
+      timeRange: "long_term",
+      limit: 20,
+    }),
   ]);
+
+  const tasteDriftScore = calculateTasteDrift(
+    shortArtists,
+    longArtists
+  );
+
+  const topGenres = getTopGenres(topArtists);
 
   const result = {
     timeRange,
     topTracks,
     topArtists,
+    insights: {
+      tasteDriftScore,
+      topGenres,
+    },
   };
 
   setCache(cacheKey, result);
@@ -180,4 +202,10 @@ const getTop = asyncHandler(async (req, res) => {
   );
 });
 
-export { getTopTracks, getTopArtists, getTop , getValidSpotifyAccessToken, getUserOrThrow };
+export {
+  getTopTracks,
+  getTopArtists,
+  getTop,
+  getValidSpotifyAccessToken,
+  getUserOrThrow,
+};

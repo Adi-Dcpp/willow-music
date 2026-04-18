@@ -142,7 +142,7 @@ const getUserTopTracks = async ({
       id: track.id,
       name: track.name,
       artistNames: track.artists.map((a) => a.name),
-      albumImage: track.album.images?.[0]?.url || null,
+      albumImageUrl: track.album.images?.[0]?.url || null,
       uri: track.uri,
     }));
   } catch (error) {
@@ -176,7 +176,7 @@ const getUserTopArtists = async ({
       id: artist.id,
       name: artist.name,
       genres: artist.genres,
-      image: artist.images?.[0]?.url || null,
+      imageUrl: artist.images?.[0]?.url || null,
     }));
   } catch (error) {
     throw new ApiError(

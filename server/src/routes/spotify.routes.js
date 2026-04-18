@@ -3,8 +3,8 @@ import {
   getTop,
   getTopTracks,
   getTopArtists,
-} from "../controllers/top.controller.js";
-import { authenticateToken } from "../middlewares/auth.middleware.js";
+} from "../controllers/spotify.controller.js";
+import { authenticateToken } from "../middleware/auth.middlewares.js";
 
 const router = Router();
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { createSnapshot, getSnapshot, deleteSnapshot } from "../controllers/snapshot.controller.js";
-import { authenticateToken } from "../middlewares/auth.middleware.js";
+import { authenticateToken } from "../middleware/auth.middlewares.js";
 
 const router = Router();
 

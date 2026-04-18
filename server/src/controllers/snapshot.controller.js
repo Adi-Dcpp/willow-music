@@ -1,4 +1,4 @@
-import { asyncHandler } from "../utils/async-handler.utils";
+import { asyncHandler } from "../utils/async-handler.utils.js";
 import { ApiError } from "../utils/api-error.utils.js";
 import { ApiResponse } from "../utils/api-response.utils.js";
 import { Snapshot } from "../models/snapshot.model.js";
