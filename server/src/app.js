@@ -1,4 +1,5 @@
 import express from "express";
+import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 
@@ -31,6 +32,49 @@ const getAllowedOrigins = () => {
 if (process.env.TRUST_PROXY === "1" || process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
+
+// Security headers – applied before any routes.
+// HSTS tells browsers to always use HTTPS for this origin (resolves Chrome Safe Browsing warnings
+// on Render-hosted APIs that already terminate TLS at the edge).
+app.use(
+  helmet({
+    // HSTS: 1 year, include subdomains, allow preload submission.
+    strictTransportSecurity: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    // CSP default-src 'none' is safe for a pure JSON API (no HTML served).
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    // Prevent browsers from MIME-sniffing the response type.
+    xContentTypeOptions: true,
+    // Disallow embedding in frames (clickjacking protection).
+    xFrameOptions: { action: "deny" },
+    // Suppress the X-Powered-By: Express header.
+    hidePoweredBy: true,
+    // Send a minimal Referer for cross-origin requests.
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    // Deny cross-origin resource sharing at the fetch-metadata level.
+    crossOriginResourcePolicy: { policy: "same-origin" },
+    // Not serving any resources that need cross-origin embedding.
+    crossOriginEmbedderPolicy: false,
+    // Disable DNS prefetching to avoid information leakage.
+    dnsPrefetchControl: { allow: false },
+    // Disable IE-specific download sniffing.
+    xDownloadOptions: true,
+    // Disable permissive cross-domain reads (Adobe Flash/PDF legacy).
+    permittedCrossDomainPolicies: { permittedPolicies: "none" },
+    // Legacy XSS filter – disabled to avoid filter-bypass attacks in old IE.
+    xXssProtection: false,
+    // Browser-side origin isolation.
+    originAgentCluster: true,
+  })
+);
 
 const allowedOrigins = new Set(getAllowedOrigins());
 

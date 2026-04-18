@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import GlowButton from "../components/common/GlowButton";
 import FooterLinks from "../components/common/FooterLinks";
@@ -24,6 +25,9 @@ const features = [
   { icon: "📸", label: "Shareable Aura" },
   { icon: "🎵", label: "Top Music Signals" },
 ];
+// Guard against slow Render cold-starts (typically < 5 s); reset the button
+// after this window so users can retry if the redirect genuinely stalled.
+const REDIRECT_TIMEOUT_MS = 8000;
 
 const SpotifyLogo = () => (
   <svg viewBox="0 0 168 168" className="h-5 w-5 shrink-0" fill="currentColor">
@@ -34,8 +38,17 @@ const SpotifyLogo = () => (
 export default function LoginPage() {
   const { theme } = useTheme();
   const location = useLocation();
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const onLogin = () => {
+    if (isRedirecting) {
+      return;
+    }
+
+    setIsRedirecting(true);
+    window.setTimeout(() => {
+      setIsRedirecting(false);
+    }, REDIRECT_TIMEOUT_MS);
     window.location.href = `${getApiBaseUrl()}/auth/spotify/login`;
   };
 
@@ -148,10 +161,10 @@ export default function LoginPage() {
           transition={{ duration: 0.6, delay: 0.4 }}
           className="mt-10"
         >
-          <GlowButton className="w-full py-4 text-base" onClick={onLogin}>
+          <GlowButton className="w-full py-4 text-base" onClick={onLogin} disabled={isRedirecting}>
             <span className="inline-flex items-center justify-center gap-2.5">
               <SpotifyLogo />
-              Continue with Spotify
+              {isRedirecting ? "Redirecting to Spotify..." : "Continue with Spotify"}
             </span>
           </GlowButton>
 
@@ -173,4 +186,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

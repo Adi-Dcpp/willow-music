@@ -11,8 +11,13 @@ export default function OAuthCallbackPage() {
   const { refreshSession, clearSession } = useAuth();
   const [error, setError] = useState("");
   const processedQuery = useRef(null);
+  const hasFinalized = useRef(false);
 
   useEffect(() => {
+    if (hasFinalized.current) {
+      return;
+    }
+
     const query = window.location.search;
 
     if (processedQuery.current === query) {
@@ -25,6 +30,8 @@ export default function OAuthCallbackPage() {
     const missingScopes = params.get("missing");
 
     const finalize = async () => {
+      hasFinalized.current = true;
+
       try {
         if (oauthError) {
           if (oauthError === "missing_scopes" && missingScopes) {

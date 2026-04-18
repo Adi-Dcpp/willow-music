@@ -1,5 +1,6 @@
 import { asyncHandler } from "../utils/async-handler.utils.js";
 import { User } from "../models/user.model.js";
+import { SpotifyAuthCode } from "../models/spotify-auth-code.model.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/jwt.utils.js";
 import { ApiError } from "../utils/api-error.utils.js";
 import crypto from "crypto";
@@ -16,6 +17,9 @@ const REQUIRED_SPOTIFY_SCOPES = [
 ];
 
 const STATE_TTL_MS = 5 * 60 * 1000;
+// Keep this above typical OAuth callback latency while ensuring stale code locks expire automatically.
+const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
+const MONGODB_DUPLICATE_KEY_ERROR = 11000;
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -118,22 +122,47 @@ const loginWithSpotify = asyncHandler(async (req, res) => {
   return res.redirect(url);
 });
 
+const reserveSpotifyAuthCode = async (code) => {
+  try {
+    await SpotifyAuthCode.create({
+      code,
+      expiresAt: new Date(Date.now() + AUTH_CODE_TTL_MS),
+    });
+    return true;
+  } catch (error) {
+    if (error?.code === MONGODB_DUPLICATE_KEY_ERROR) {
+      return false;
+    }
+
+    throw error;
+  }
+};
+
 const spotifyCallback = asyncHandler(async (req, res) => {
+  console.log("SPOTIFY CALLBACK HIT");
+
   const { code, state, error } = req.query;
   const frontendURL = getFrontendUrl();
   const redirectUri = getSpotifyRedirectUri();
 
   if (error) {
     console.error("SPOTIFY CALLBACK ERROR PARAM:", error);
-    return res.status(500).json({ error: String(error) });
+    return res.redirect(`${frontendURL}/auth/callback?error=${encodeURIComponent(String(error))}`);
   }
 
   if (!code) {
-    throw new ApiError(400, "Authorization code missing");
+    return res.redirect(`${frontendURL}/auth/callback?error=missing_code`);
   }
 
   if (!verifyAuthState(state)) {
-    throw new ApiError(400, "State mismatch");
+    return res.redirect(`${frontendURL}/auth/callback?error=state_mismatch`);
+  }
+
+  const reservedCode = await reserveSpotifyAuthCode(code);
+
+  if (!reservedCode) {
+    console.warn("SPOTIFY CALLBACK DUPLICATE CODE BLOCKED");
+    return res.redirect(`${frontendURL}/auth/callback?error=duplicate_code`);
   }
 
   let tokenData;
@@ -173,7 +202,7 @@ const spotifyCallback = asyncHandler(async (req, res) => {
       data: tokenError.response?.data,
     });
 
-    return res.status(500).json({ error: tokenError.message });
+    return res.redirect(`${frontendURL}/auth/callback?error=spotify_auth_failed`);
   }
 
   const spotifyScopes = (tokenData.scope || "")
