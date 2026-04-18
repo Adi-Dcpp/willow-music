@@ -1,29 +1,9 @@
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useLocation } from "react-router-dom";
 import GlowButton from "../components/common/GlowButton";
 import FooterLinks from "../components/common/FooterLinks";
 import { useTheme } from "../context/ThemeContext";
-import { useAuth } from "../context/AuthContext";
-
-const getBackendUrl = () => {
-  const backendUrl = import.meta.env.VITE_BACKEND_URL;
-  const apiUrl = import.meta.env.VITE_API_URL;
-
-  if (backendUrl) {
-    return backendUrl.replace(/\/+$/, "");
-  }
-
-  if (apiUrl) {
-    return apiUrl.replace(/\/api\/?$/, "");
-  }
-
-  if (import.meta.env.DEV) {
-    return "http://127.0.0.1:5000";
-  }
-
-  throw new Error("VITE_BACKEND_URL must be set in production");
-};
 
 const features = [
   { icon: "🎭", label: "Music Identity" },
@@ -44,33 +24,24 @@ const SpotifyLogo = () => (
 export default function LoginPage() {
   const { theme } = useTheme();
   const location = useLocation();
-  const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
-  const [loading, setLoading] = useState(
-    window.localStorage.getItem("willow_oauth_inflight") === "1"
-  );
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/dashboard", { replace: true });
+  const handleLogin = () => {
+    if (loading) {
+      return;
     }
-  }, [isAuthenticated, navigate]);
 
-  const onLogin = () => {
-    if (loading || isAuthenticated) {
-      if (isAuthenticated) {
-        navigate("/dashboard", { replace: true });
-      }
+    const token = window.localStorage.getItem("spotify_token");
+    if (token) {
+      console.log("User already logged in");
       return;
     }
 
     setLoading(true);
-    window.localStorage.setItem("willow_oauth_inflight", "1");
     window.setTimeout(() => {
       setLoading(false);
-      window.localStorage.removeItem("willow_oauth_inflight");
     }, REDIRECT_TIMEOUT_MS);
-    window.location.href = `${getBackendUrl()}/api/auth/spotify/login`;
+    window.location.href = `${import.meta.env.VITE_BACKEND_URL}/api/auth/spotify/login`;
   };
 
   return (
@@ -182,7 +153,7 @@ export default function LoginPage() {
           transition={{ duration: 0.6, delay: 0.4 }}
           className="mt-10"
         >
-          <GlowButton className="w-full py-4 text-base" onClick={onLogin} disabled={loading}>
+          <GlowButton className="w-full py-4 text-base" onClick={handleLogin} disabled={loading}>
             <span className="inline-flex items-center justify-center gap-2.5">
               <SpotifyLogo />
               {loading ? "Redirecting to Spotify..." : "Continue with Spotify"}

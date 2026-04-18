@@ -15,9 +15,8 @@ export default function CallbackPage() {
       const token = params.get("token");
 
       if (token) {
-        console.log("Token received:", token);
+        console.log("TOKEN:", token);
         window.localStorage.setItem("spotify_token", token);
-        window.localStorage.removeItem("willow_oauth_inflight");
         window.location.replace("/dashboard");
         return;
       }
