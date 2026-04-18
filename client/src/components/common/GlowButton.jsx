@@ -31,7 +31,7 @@ export default function GlowButton({
       whileTap={{ scale: 0.96 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
       onClick={handlePress}
-      className={`relative overflow-hidden rounded-full px-6 py-3 text-sm font-semibold text-white shadow-xl disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      className={`relative overflow-hidden rounded-full px-6 py-3 text-sm font-semibold text-white shadow-xl disabled:cursor-not-allowed ${className}`}
       style={
         isGhost
           ? {

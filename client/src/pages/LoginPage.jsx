@@ -92,7 +92,7 @@ export default function LoginPage() {
               className="text-gradient"
               style={{ backgroundImage: theme.palette.button }}
             >
-              Has a Sound.
+              Has a Sound
             </span>
           </h1>
           <p className="mt-5 text-base leading-relaxed" style={{ color: theme.palette.muted }}>
