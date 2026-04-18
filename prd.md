@@ -259,7 +259,7 @@ Pick **2** insights for v1:
   - Cache documents (optional)
 
 ## 7.4 Deployment
-- Frontend: Vercel / Netlify
+- Frontend: Netlify
 - Backend: Render / Railway / Fly.io
 - MongoDB: Atlas
 - Environment variables set in hosting dashboards.

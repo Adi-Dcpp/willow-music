@@ -71,14 +71,14 @@ npm run dev
 - Build command: `npm install`
 - Start command: `npm start`
 - Set all backend environment variables
-- Use the exact Vercel frontend URL in `FRONTEND_URL`
+- Use the exact Netlify frontend URL in `FRONTEND_URL`
 
-### Frontend on Vercel
+### Frontend on Netlify
 
-- Root directory: `client`
+- Root directory: repo root with `netlify.toml` pointing to `client`
 - Build command: `npm run build`
 - Output directory: `dist`
-- SPA fallback rewrites live in both `client/vercel.json` and root `vercel.json` so direct links like `/dashboard` resolve to `index.html`
+- SPA fallback rewrites live in `netlify.toml` so direct links like `/dashboard` resolve to `index.html`
 - Set `VITE_API_BASE_URL` to the Render backend URL (without `/api`)
 
 ### Spotify OAuth
@@ -115,5 +115,5 @@ https://your-backend.onrender.com/api/auth/spotify/callback
 
 - If login loops, check `SPOTIFY_REDIRECT_URI`, `FRONTEND_URL`, and cookie settings
 - If API calls 401 after login, verify cookies are being sent with credentials
-- If CORS fails, verify the backend origin whitelist exactly matches the Vercel domain
+- If CORS fails, verify the backend origin whitelist exactly matches the Netlify domain
 - If deployment fails, confirm all production env vars are present before startup
