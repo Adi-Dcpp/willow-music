@@ -258,13 +258,17 @@ const spotifyCallback = asyncHandler(async (req, res) => {
   });
 
   res.cookie("accessToken", accessToken, {
-    ...authCookieOptions,
-    maxAge: 15 * 60 * 1000,
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    path: "/",
   });
 
   res.cookie("refreshToken", refreshToken, {
-    ...authCookieOptions,
-    maxAge: 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    path: "/",
   });
 
   console.log("[auth] cookies set", {
