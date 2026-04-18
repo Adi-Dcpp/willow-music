@@ -6,7 +6,7 @@ import { User } from "../models/user.model.js"
 const getCurrentUser = asyncHandler(async(req, res) => {
     const { userId } = req.user;
 
-    const user = await User.findById(userId).select("spotifyUserId displayName profileImage")
+    const user = await User.findById(userId).select("spotifyUserId displayName profileImage spotifyEmail spotifyScopes")
 
     if(!user) {
         throw new ApiError(404, "User does not exist")
@@ -21,7 +21,9 @@ const getCurrentUser = asyncHandler(async(req, res) => {
                 {
                     spotifyUserId : user.spotifyUserId,
                     displayName : user.displayName,
-                    profileImage : user.profileImage
+                    profileImage : user.profileImage,
+                    spotifyEmail : user.spotifyEmail,
+                    spotifyScopes : user.spotifyScopes || []
                 }
             )
         )

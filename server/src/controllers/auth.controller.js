@@ -10,10 +10,30 @@ import {
   getSpotifyUserProfile,
 } from "../services/spotify.service.js";
 
+const authStateStore = new Map();
+const AUTH_STATE_TTL_MS = 5 * 60 * 1000;
+const REQUIRED_SPOTIFY_SCOPES = [
+  "playlist-modify-public",
+  "playlist-modify-private",
+  "user-top-read",
+];
+
+const setAuthState = (state) => {
+  authStateStore.set(state, Date.now() + AUTH_STATE_TTL_MS);
+};
+
+const consumeAuthState = (state) => {
+  const expiresAt = authStateStore.get(state);
+  authStateStore.delete(state);
+
+  return Boolean(expiresAt && expiresAt > Date.now());
+};
+
 const loginWithSpotify = asyncHandler(async (req, res) => {
   const state = crypto.randomBytes(16).toString("hex");
 
   const url = getSpotifyAuthURL({ state });
+  setAuthState(state);
 
   res.cookie("spotify_auth_state", state, {
     httpOnly: true,
@@ -27,11 +47,10 @@ const loginWithSpotify = asyncHandler(async (req, res) => {
 
 const spotifyCallback = asyncHandler(async (req, res) => {
   const { code, state, error } = req.query;
+  const frontendURL = process.env.FRONTEND_URL || "http://localhost:5173";
 
   if (error) {
-    return res.redirect(
-      `${process.env.FRONTEND_URL}/login?error=spotify_auth_failed`
-    );
+    return res.redirect(`${frontendURL}/auth/callback?error=spotify_auth_failed`);
   }
 
   if (!code) {
@@ -39,14 +58,32 @@ const spotifyCallback = asyncHandler(async (req, res) => {
   }
 
   const storedState = req.cookies?.spotify_auth_state;
+  const matchedCookieState = Boolean(state && storedState && state === storedState);
+  const matchedStoredState = Boolean(state && consumeAuthState(state));
 
-  if (!state || !storedState || state !== storedState) {
+  if (!matchedCookieState && !matchedStoredState) {
     throw new ApiError(400, "State mismatch");
   }
 
   res.clearCookie("spotify_auth_state");
 
   const tokenData = await exchangeCodeForToken({ code });
+  const spotifyScopes = (tokenData.scope || "")
+    .split(" ")
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+
+  const missingScopes = REQUIRED_SPOTIFY_SCOPES.filter(
+    (scope) => !spotifyScopes.includes(scope)
+  );
+
+  if (missingScopes.length) {
+    return res.redirect(
+      `${frontendURL}/auth/callback?error=missing_scopes&missing=${encodeURIComponent(
+        missingScopes.join(",")
+      )}`
+    );
+  }
 
   const spotifyProfile = await getSpotifyUserProfile({
     accessToken: tokenData.accessToken,
@@ -63,14 +100,18 @@ const spotifyCallback = asyncHandler(async (req, res) => {
       spotifyUserId: spotifyProfile.spotifyUserId,
       displayName: spotifyProfile.displayName,
       profileImage: spotifyProfile.profileImage,
+      spotifyEmail: spotifyProfile.spotifyEmail,
       accessToken: tokenData.accessToken,
       refreshToken: tokenData.refreshToken,
       tokenExpiresAt: expiresAt,
+      spotifyScopes,
     });
   } else {
     user.accessToken = tokenData.accessToken;
     user.refreshToken = tokenData.refreshToken;
     user.tokenExpiresAt = expiresAt;
+    user.spotifyEmail = spotifyProfile.spotifyEmail;
+    user.spotifyScopes = spotifyScopes;
 
     await user.save();
   }
@@ -99,11 +140,32 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000,
   });
 
-  return res.json({
+  return res.redirect(`${frontendURL}/auth/callback?token=${encodeURIComponent(jwtToken)}`);
+});
+
+const logout = asyncHandler(async (req, res) => {
+  res.clearCookie("accessToken", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+
+  res.clearCookie("spotify_auth_state", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+
+  return res.status(200).json({
     success: true,
-    message: "Login successful",
-    token: jwtToken,
+    message: "Logged out successfully",
   });
 });
 
-export { loginWithSpotify, spotifyCallback };
+export { loginWithSpotify, spotifyCallback, logout };

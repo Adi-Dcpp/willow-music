@@ -16,8 +16,10 @@ const getSpotifyAuthURL = ({ state }) => {
     client_id: process.env.SPOTIFY_CLIENT_ID,
     response_type: "code",
     redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
+    show_dialog: "true",
     scope: [
       "user-top-read",
+      "user-read-email",
       "playlist-modify-public",
       "playlist-modify-private",
     ].join(" "),
@@ -45,13 +47,14 @@ const exchangeCodeForToken = async ({ code }) => {
 
     const response = await axios.post(url, body.toString(), { headers });
 
-    const { access_token, refresh_token, expires_in } = response.data;
+    const { access_token, refresh_token, expires_in, scope } = response.data;
 
     return {
       accessToken: access_token,
       refreshToken: refresh_token,
       expiresIn: expires_in,
       expiresAt: Date.now() + expires_in * 1000,
+      scope,
     };
   } catch (error) {
     throw new ApiError(
@@ -78,6 +81,7 @@ const getSpotifyUserProfile = async ({ accessToken }) => {
       spotifyUserId: data.id,
       displayName: data.display_name,
       profileImage: data.images?.[0]?.url || null,
+      spotifyEmail: data.email || null,
     };
   } catch (error) {
     throw new ApiError(
@@ -189,12 +193,11 @@ const getUserTopArtists = async ({
 // 7. Create Playlist
 const createSpotifyPlaylist = async ({
   accessToken,
-  userId,
   name,
   isPublic = true,
 }) => {
   try {
-    const url = `https://api.spotify.com/v1/users/${userId}/playlists`;
+    const url = "https://api.spotify.com/v1/me/playlists";
 
     const response = await axios.post(
       url,
@@ -212,9 +215,25 @@ const createSpotifyPlaylist = async ({
       playlistUrl: response.data.external_urls.spotify,
     };
   } catch (error) {
+    const rawStatus = error.response?.status;
+    const rawData = error.response?.data;
+    const rawMessage =
+      error.response?.data?.error?.message ||
+      error.response?.data?.error_description ||
+      "";
+
+    const spotifyMessage =
+      rawStatus === 403
+        ? (
+            rawMessage && rawMessage.toLowerCase() !== "forbidden"
+              ? rawMessage
+              : `Spotify denied playlist creation (403) at POST /v1/me/playlists. Raw Spotify response: ${JSON.stringify(rawData || { message: "Forbidden" })}`
+          )
+        : (rawMessage || "Failed to create playlist");
+
     throw new ApiError(
-      error.response?.status || 500,
-      "Failed to create playlist",
+      rawStatus || 500,
+      spotifyMessage,
     );
   }
 };
@@ -222,36 +241,136 @@ const createSpotifyPlaylist = async ({
 // 8. Add Tracks to Playlist
 const addTracksToPlaylist = async ({ accessToken, playlistId, trackUris }) => {
   try {
-    if (!trackUris?.length) {
+    const normalizedUris = (trackUris || []).filter(
+      (uri) => typeof uri === "string" && /^spotify:track:[A-Za-z0-9]{22}$/.test(uri),
+    );
+
+    if (process.env.PLAYLIST_DEBUG === "true") {
+      console.log("[playlist:add] playlistId:", playlistId);
+      console.log("[playlist:add] urisCount:", normalizedUris.length);
+      console.log("[playlist:add] urisSample:", normalizedUris.slice(0, 5));
+    }
+
+    if (!normalizedUris.length) {
       return { success: false, message: "No tracks to add" };
     }
 
     const url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
+    let addedCount = 0;
+    let skippedCount = 0;
+    let firstForbiddenDetail = "";
+
+    const addChunkOneByOne = async (chunk) => {
+      for (const uri of chunk) {
+        try {
+          await axios.post(
+            url,
+            { uris: [uri] },
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
+            },
+          );
+          addedCount += 1;
+        } catch (singleError) {
+          const singleStatus = singleError.response?.status;
+
+          if (singleStatus === 400 || singleStatus === 403) {
+            skippedCount += 1;
+            if (!firstForbiddenDetail) {
+              const singleData = singleError.response?.data;
+              firstForbiddenDetail = JSON.stringify(singleData || { message: "Forbidden" });
+            }
+            continue;
+          }
+
+          throw singleError;
+        }
+      }
+    };
 
     // Spotify allows max 100 per request
     const chunks = [];
-    for (let i = 0; i < trackUris.length; i += 100) {
-      chunks.push(trackUris.slice(i, i + 100));
+    for (let i = 0; i < normalizedUris.length; i += 100) {
+      chunks.push(normalizedUris.slice(i, i + 100));
     }
 
     for (const chunk of chunks) {
-      await axios.post(
-        url,
-        { uris: chunk },
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
+      try {
+        await axios.post(
+          url,
+          { uris: chunk },
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
           },
-        },
+        );
+        addedCount += chunk.length;
+      } catch (chunkError) {
+        const status = chunkError.response?.status;
+
+        if (process.env.PLAYLIST_DEBUG === "true") {
+          console.log("[playlist:add] chunkError status:", status);
+          console.log("[playlist:add] chunkError data:", chunkError.response?.data || null);
+        }
+
+        if (status === 400 || status === 403 || (status >= 500 && status < 600)) {
+          await addChunkOneByOne(chunk);
+        } else {
+          throw chunkError;
+        }
+      }
+    }
+
+    if (addedCount === 0) {
+      throw new ApiError(
+        403,
+        `Spotify denied adding tracks (403) at POST /v1/playlists/${playlistId}/tracks. Raw Spotify response: ${firstForbiddenDetail || JSON.stringify({ message: "Forbidden" })}`,
       );
     }
 
-    return { success: true };
+    return {
+      success: true,
+      addedCount,
+      skippedCount,
+      partial: skippedCount > 0,
+    };
   } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    const rawStatus = error.response?.status;
+    const rawData = error.response?.data;
+    const rawDataString = rawData ? JSON.stringify(rawData) : "none";
+    const axiosCode = error.code || "unknown";
+    const endpoint = error.config?.url || `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
+    const rawMessage =
+      error.response?.data?.error?.message ||
+      error.response?.data?.error_description ||
+      "";
+
+    const spotifyMessage =
+      rawStatus === 403
+        ? (
+            rawMessage && rawMessage.toLowerCase() !== "forbidden"
+              ? rawMessage
+              : `Spotify denied adding tracks (403) at POST /v1/playlists/${playlistId}/tracks. Raw Spotify response: ${JSON.stringify(rawData || { message: "Forbidden" })}`
+          )
+        : rawStatus === 411
+        ? "Spotify rejected add-tracks request with 411 Length Required. This usually means Content-Length: 0 is required for query-parameter POST fallback."
+        : (
+            rawMessage ||
+            `Failed to add tracks to playlist. status=${rawStatus || "none"} axiosCode=${axiosCode} endpoint=${endpoint} response=${rawDataString}`
+          );
+
     throw new ApiError(
-      error.response?.status || 500,
-      "Failed to add tracks to playlist",
+      rawStatus || 500,
+      spotifyMessage,
     );
   }
 };

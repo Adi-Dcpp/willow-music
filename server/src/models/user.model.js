@@ -14,6 +14,12 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
+    spotifyEmail: {
+      type: String,
+      default: null,
+      index: true,
+    },
+
     profileImage: {
       type: String,
       default: null,
@@ -32,6 +38,11 @@ const userSchema = new mongoose.Schema(
     tokenExpiresAt: {
       type: Date,
       required: true,
+    },
+
+    spotifyScopes: {
+      type: [String],
+      default: [],
     },
   },
   {
