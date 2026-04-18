@@ -11,8 +11,13 @@ export default function OAuthCallbackPage() {
   const { refreshSession, clearSession } = useAuth();
   const [error, setError] = useState("");
   const processedQuery = useRef(null);
+  const hasFinalized = useRef(false);
 
   useEffect(() => {
+    if (hasFinalized.current) {
+      return;
+    }
+
     const query = window.location.search;
 
     if (processedQuery.current === query) {
@@ -35,6 +40,7 @@ export default function OAuthCallbackPage() {
         }
 
         await refreshSession();
+        hasFinalized.current = true;
         navigate("/dashboard", { replace: true });
       } catch (err) {
         clearSession();

@@ -16,6 +16,8 @@ const REQUIRED_SPOTIFY_SCOPES = [
 ];
 
 const STATE_TTL_MS = 5 * 60 * 1000;
+const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
+const processedSpotifyAuthCodes = new Map();
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -118,19 +120,40 @@ const loginWithSpotify = asyncHandler(async (req, res) => {
   return res.redirect(url);
 });
 
+const cleanExpiredAuthCodes = () => {
+  const now = Date.now();
+
+  for (const [code, expiresAt] of processedSpotifyAuthCodes.entries()) {
+    if (expiresAt <= now) {
+      processedSpotifyAuthCodes.delete(code);
+    }
+  }
+};
+
 const spotifyCallback = asyncHandler(async (req, res) => {
+  console.log("SPOTIFY CALLBACK HIT");
+
   const { code, state, error } = req.query;
   const frontendURL = getFrontendUrl();
   const redirectUri = getSpotifyRedirectUri();
 
   if (error) {
     console.error("SPOTIFY CALLBACK ERROR PARAM:", error);
-    return res.status(500).json({ error: String(error) });
+    return res.redirect(`${frontendURL}/auth/callback?error=${encodeURIComponent(String(error))}`);
   }
 
   if (!code) {
-    throw new ApiError(400, "Authorization code missing");
+    return res.redirect(`${frontendURL}/auth/callback?error=missing_code`);
   }
+
+  cleanExpiredAuthCodes();
+
+  if (processedSpotifyAuthCodes.has(code)) {
+    console.warn("SPOTIFY CALLBACK DUPLICATE CODE BLOCKED");
+    return res.redirect(`${frontendURL}/auth/callback?error=duplicate_code`);
+  }
+
+  processedSpotifyAuthCodes.set(code, Date.now() + AUTH_CODE_TTL_MS);
 
   if (!verifyAuthState(state)) {
     throw new ApiError(400, "State mismatch");
@@ -173,7 +196,7 @@ const spotifyCallback = asyncHandler(async (req, res) => {
       data: tokenError.response?.data,
     });
 
-    return res.status(500).json({ error: tokenError.message });
+    return res.redirect(`${frontendURL}/auth/callback?error=spotify_auth_failed`);
   }
 
   const spotifyScopes = (tokenData.scope || "")

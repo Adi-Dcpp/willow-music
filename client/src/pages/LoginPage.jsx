@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import GlowButton from "../components/common/GlowButton";
 import FooterLinks from "../components/common/FooterLinks";
@@ -34,8 +35,14 @@ const SpotifyLogo = () => (
 export default function LoginPage() {
   const { theme } = useTheme();
   const location = useLocation();
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const onLogin = () => {
+    if (isRedirecting) {
+      return;
+    }
+
+    setIsRedirecting(true);
     window.location.href = `${getApiBaseUrl()}/auth/spotify/login`;
   };
 
@@ -148,10 +155,10 @@ export default function LoginPage() {
           transition={{ duration: 0.6, delay: 0.4 }}
           className="mt-10"
         >
-          <GlowButton className="w-full py-4 text-base" onClick={onLogin}>
+          <GlowButton className="w-full py-4 text-base" onClick={onLogin} disabled={isRedirecting}>
             <span className="inline-flex items-center justify-center gap-2.5">
               <SpotifyLogo />
-              Continue with Spotify
+              {isRedirecting ? "Redirecting to Spotify..." : "Continue with Spotify"}
             </span>
           </GlowButton>
 
@@ -173,4 +180,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
