@@ -25,6 +25,8 @@ const features = [
   { icon: "📸", label: "Shareable Aura" },
   { icon: "🎵", label: "Top Music Signals" },
 ];
+// Guard against slow Render cold-starts (typically < 5 s); reset the button
+// after this window so users can retry if the redirect genuinely stalled.
 const REDIRECT_TIMEOUT_MS = 8000;
 
 const SpotifyLogo = () => (
