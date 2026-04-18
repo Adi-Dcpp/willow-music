@@ -9,6 +9,7 @@ import {
 } from "../services/spotify.service.js";
 import { getValidSpotifyAccessToken } from "./spotify.controller.js";
 import { User } from "../models/user.model.js";
+import { buildUserSummary } from "../utils/summary.utils.js";
 
 const createSnapshot = asyncHandler(async (req, res) => {
   const { userId, spotifyUserId } = req.user;
@@ -28,14 +29,18 @@ const createSnapshot = asyncHandler(async (req, res) => {
     getUserTopArtists({ accessToken, timeRange, limit: 10 }),
   ]);
 
+  // Build summary for lighter, AI-ready snapshot
+  const summaryResult = buildUserSummary(topTracks, topArtists);
+
   const shareId = generateShareId();
 
   const snapshot = await Snapshot.create({
     shareId,
     spotifyUserId,
     timeRange,
-    topTracks,
-    topArtists,
+    topTracks: summaryResult.topTracks,
+    topArtists: summaryResult.topArtists,
+    summary: summaryResult.summary,
   });
 
   return res.status(201).json(

@@ -13,8 +13,6 @@ import {
 const authStateStore = new Map();
 const AUTH_STATE_TTL_MS = 5 * 60 * 1000;
 const REQUIRED_SPOTIFY_SCOPES = [
-  "playlist-modify-public",
-  "playlist-modify-private",
   "user-top-read",
 ];
 

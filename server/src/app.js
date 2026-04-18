@@ -6,8 +6,8 @@ import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import spotifyRoutes from "./routes/spotify.routes.js";
 import snapshotRoutes from "./routes/snapshot.routes.js";
-import playlistRoutes from "./routes/playlist.routes.js";
 import ogRoutes from "./routes/og.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 import { globalErrorHandler } from "./middleware/error.middlewares.js";
 import { rateLimiter } from "./middleware/rateLimiter.middlewares.js";
 
@@ -42,8 +42,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/top", spotifyRoutes);
 app.use("/api/share", snapshotRoutes);
-app.use("/api/playlist", playlistRoutes);
 app.use("/api/og", ogRoutes);
+app.use("/api/ai", aiRoutes);
 /**
  * When frontend loads /share/:shareId, add:
 

@@ -39,6 +39,13 @@ const snapshotSchema = new mongoose.Schema(
       },
     ],
 
+    summary: {
+      topGenres: [String],
+      topArtist: String,
+      vibe: String,
+      depthScore: Number,
+    },
+
     insights: {
       tasteDriftScore: {
         type: Number,
