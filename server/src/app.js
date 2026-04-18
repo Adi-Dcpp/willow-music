@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import spotifyRoutes from "./routes/spotify.routes.js";
+import snapshotRoutes from "./routes/snapshot.routes.js";
 import { globalErrorHandler } from "./middleware/error.middlewares.js";
 
 const app = express();
@@ -23,7 +24,8 @@ app.get("/", (req, res) => {
 
 app.use("/auth", authRoutes);
 app.use("/user", userRoutes);
-app.use("/spotify", spotifyRoutes);
+app.use("/top", spotifyRoutes);
+app.use("/share", snapshotRoutes);
 app.use(globalErrorHandler);
 
 export default app;

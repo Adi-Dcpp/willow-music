@@ -50,7 +50,6 @@ const authenticateToken = asyncHandler(async (req, res, next) => {
 
   const token = bearerToken || cookieToken;
 
-  // 🔥 No access token → try refresh
   if (!token) {
     issueAccessTokenFromRefresh(req, res);
     return next();
@@ -66,7 +65,6 @@ const authenticateToken = asyncHandler(async (req, res, next) => {
 
     return next();
   } catch (err) {
-    // 🔥 expired → try refresh
     issueAccessTokenFromRefresh(req, res);
     return next();
   }

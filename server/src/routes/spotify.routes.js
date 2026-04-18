@@ -1,14 +1,21 @@
 import { Router } from "express";
 import {
+  getTop,
   getTopTracks,
   getTopArtists,
-} from "../controllers/spotify.controller.js";
-import { authenticateToken } from "../middleware/auth.middlewares.js";
+} from "../controllers/top.controller.js";
+import { authenticateToken } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-router.get("/top-tracks", authenticateToken, getTopTracks);
+// all routes protected
+router.use(authenticateToken);
 
-router.get("/top-artists", authenticateToken, getTopArtists);
+// main route
+router.get("/", getTop);
+
+// specific routes
+router.get("/tracks", getTopTracks);
+router.get("/artists", getTopArtists);
 
 export default router;
