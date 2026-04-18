@@ -7,7 +7,7 @@ import {
   getUserTopArtists,
 } from "../services/spotify.service.js";
 import { getCache, setCache } from "../utils/cache.utils.js";
-import { calculateTasteDrift, getTopGenres } from "../utils/insight.utils.js";
+import { buildUserSummary } from "../utils/summary.utils.js";
 
 const getValidSpotifyAccessToken = async (user) => {
   const bufferTime = 60 * 1000;
@@ -140,18 +140,12 @@ const getTop = asyncHandler(async (req, res) => {
 
   const cachedData = getCache(cacheKey);
   if (cachedData) {
-    return res.status(200).json(
-      new ApiResponse(
-        200,
-        "Top data fetched successfully (cached)",
-        cachedData
-      )
-    );
+    return res.status(200).json(cachedData);
   }
 
   const accessToken = user.accessToken;
 
-  const [topTracks, topArtists, shortArtists, longArtists] = await Promise.all([
+  const [topTracks, topArtists] = await Promise.all([
     getUserTopTracks({
       accessToken,
       timeRange,
@@ -162,44 +156,13 @@ const getTop = asyncHandler(async (req, res) => {
       timeRange,
       limit: parsedLimit,
     }),
-    getUserTopArtists({
-      accessToken,
-      timeRange: "short_term",
-      limit: 20,
-    }),
-    getUserTopArtists({
-      accessToken,
-      timeRange: "long_term",
-      limit: 20,
-    }),
   ]);
 
-  const tasteDriftScore = calculateTasteDrift(
-    shortArtists,
-    longArtists
-  );
-
-  const topGenres = getTopGenres(topArtists);
-
-  const result = {
-    timeRange,
-    topTracks,
-    topArtists,
-    insights: {
-      tasteDriftScore,
-      topGenres,
-    },
-  };
+  const result = buildUserSummary(topTracks?.items || topTracks, topArtists?.items || topArtists);
 
   setCache(cacheKey, result);
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      "User's top tracks and artists fetched successfully",
-      result
-    )
-  );
+  return res.status(200).json(result);
 });
 
 export {

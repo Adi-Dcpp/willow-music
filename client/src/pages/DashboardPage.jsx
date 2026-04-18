@@ -98,7 +98,7 @@ export default function DashboardPage() {
     try {
       setAILoading(true);
       const response = await api.post("/ai/review", { summary });
-      setAIReview(response.data?.data?.review || "");
+      setAIReview(response.data?.review || "");
     } catch {
       // silently fail — the card just won't show
     } finally {
@@ -131,10 +131,12 @@ export default function DashboardPage() {
       setPayload(data);
 
       // Fetch AI review based on this data (once per session per timeRange)
-      const topGenres = data.insights?.topGenres || [];
+      const rawGenres = data.insights?.topGenres || [];
+      const topGenres = rawGenres.map((g) => (typeof g === "string" ? g : g.genre));
       const topArtist = data.topArtists?.[0]?.name || "";
       const tasteDriftScore = data.insights?.tasteDriftScore ?? 0;
-      const summary = { topGenres, topArtist, tasteDriftScore };
+      const vibeLabel = deriveVibe(rawGenres);
+      const summary = { topGenres, topArtist, vibe: vibeLabel, depthScore: tasteDriftScore };
       const summaryKey = JSON.stringify(summary);
 
       if (aiSummaryRef.current !== summaryKey) {
