@@ -3,10 +3,11 @@ import { User } from "../models/user.model.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/jwt.utils.js";
 import { ApiError } from "../utils/api-error.utils.js";
 import crypto from "crypto";
+import axios from "axios";
 
 import {
   getSpotifyAuthURL,
-  exchangeCodeForToken,
+  getSpotifyRedirectUri,
   getSpotifyUserProfile,
 } from "../services/spotify.service.js";
 
@@ -120,9 +121,11 @@ const loginWithSpotify = asyncHandler(async (req, res) => {
 const spotifyCallback = asyncHandler(async (req, res) => {
   const { code, state, error } = req.query;
   const frontendURL = getFrontendUrl();
+  const redirectUri = getSpotifyRedirectUri();
 
   if (error) {
-    return res.redirect(`${frontendURL}?error=spotify_auth_failed`);
+    console.error("SPOTIFY CALLBACK ERROR PARAM:", error);
+    return res.status(500).json({ error: String(error) });
   }
 
   if (!code) {
@@ -133,7 +136,46 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     throw new ApiError(400, "State mismatch");
   }
 
-  const tokenData = await exchangeCodeForToken({ code });
+  let tokenData;
+
+  try {
+    console.log("CODE:", code);
+    console.log("REDIRECT_URI:", redirectUri);
+
+    const tokenResponse = await axios.post(
+      "https://accounts.spotify.com/api/token",
+      new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+        client_id: process.env.SPOTIFY_CLIENT_ID,
+        client_secret: process.env.SPOTIFY_CLIENT_SECRET,
+      }).toString(),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      },
+    );
+
+    console.log("TOKEN RESPONSE:", tokenResponse.data);
+
+    tokenData = {
+      accessToken: tokenResponse.data.access_token,
+      refreshToken: tokenResponse.data.refresh_token,
+      expiresIn: tokenResponse.data.expires_in,
+      scope: tokenResponse.data.scope,
+    };
+  } catch (tokenError) {
+    console.error("SPOTIFY TOKEN EXCHANGE ERROR:", {
+      message: tokenError.message,
+      status: tokenError.response?.status,
+      data: tokenError.response?.data,
+    });
+
+    return res.status(500).json({ error: tokenError.message });
+  }
+
   const spotifyScopes = (tokenData.scope || "")
     .split(" ")
     .map((scope) => scope.trim())
