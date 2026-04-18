@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 import GlowButton from "../components/common/GlowButton";
 import FooterLinks from "../components/common/FooterLinks";
 import { useTheme } from "../context/ThemeContext";
-import { API_BASE_URL } from "../config/api";
+import { API_ROOT_URL } from "../config/api";
 
 const features = [
   { icon: "🎭", label: "Music Identity" },
@@ -36,7 +36,7 @@ export default function LoginPage() {
     window.setTimeout(() => {
       setLoading(false);
     }, REDIRECT_TIMEOUT_MS);
-    window.location.href = `${API_BASE_URL}/api/auth/spotify/login`;
+    window.location.href = `${API_ROOT_URL}/auth/spotify/login`;
   };
 
   return (
