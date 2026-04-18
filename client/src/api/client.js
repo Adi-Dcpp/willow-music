@@ -1,42 +1,11 @@
 import axios from "axios";
+import { API_ROOT_URL } from "../config/api";
 
-const getApiBaseUrl = () => {
-  const backendUrl = import.meta.env.VITE_BACKEND_URL;
-  const apiUrl = import.meta.env.VITE_API_URL;
-
-  if (backendUrl) {
-    return `${backendUrl.replace(/\/+$/, "")}/api`;
-  }
-
-  if (apiUrl) {
-    return apiUrl;
-  }
-
-  if (import.meta.env.DEV) {
-    return "http://127.0.0.1:5000/api";
-  }
-
-  throw new Error("VITE_BACKEND_URL must be set in production");
-};
+axios.defaults.withCredentials = true;
 
 export const api = axios.create({
-  baseURL: getApiBaseUrl(),
+  baseURL: API_ROOT_URL,
   withCredentials: true,
-});
-
-api.interceptors.request.use((config) => {
-  const token =
-    window.localStorage.getItem("spotify_token") ||
-    window.localStorage.getItem("willow_access_token");
-
-  if (token) {
-    config.headers = {
-      ...(config.headers || {}),
-      Authorization: `Bearer ${token}`,
-    };
-  }
-
-  return config;
 });
 
 api.interceptors.response.use(

@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import GlowButton from "../components/common/GlowButton";
 import FooterLinks from "../components/common/FooterLinks";
 import { useTheme } from "../context/ThemeContext";
+import { API_BASE_URL } from "../config/api";
 
 const features = [
   { icon: "🎭", label: "Music Identity" },
@@ -31,17 +32,11 @@ export default function LoginPage() {
       return;
     }
 
-    const token = window.localStorage.getItem("spotify_token");
-    if (token) {
-      console.log("User already logged in");
-      return;
-    }
-
     setLoading(true);
     window.setTimeout(() => {
       setLoading(false);
     }, REDIRECT_TIMEOUT_MS);
-    window.location.href = `${import.meta.env.VITE_BACKEND_URL}/api/auth/spotify/login`;
+    window.location.href = `${API_BASE_URL}/api/auth/spotify/login`;
   };
 
   return (

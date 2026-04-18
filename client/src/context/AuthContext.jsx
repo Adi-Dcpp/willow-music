@@ -4,16 +4,10 @@ import { api } from "../api/client";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [sessionToken, setSessionToken] = useState(
-    () => window.localStorage.getItem("spotify_token") || ""
-  );
   const [user, setUser] = useState(null);
   const [isBooting, setIsBooting] = useState(true);
 
   const clearSession = useCallback(() => {
-    window.localStorage.removeItem("spotify_token");
-    window.localStorage.removeItem("willow_access_token");
-    setSessionToken("");
     setUser(null);
   }, []);
 
@@ -36,11 +30,7 @@ export function AuthProvider({ children }) {
         await refreshSession();
       } catch {
         if (mounted) {
-          const token = window.localStorage.getItem("spotify_token") || "";
-          setSessionToken(token);
-          if (!token) {
-            clearSession();
-          }
+          clearSession();
         }
       } finally {
         if (mounted) setIsBooting(false);
@@ -63,12 +53,12 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
-      isAuthenticated: Boolean(user || sessionToken),
+      isAuthenticated: Boolean(user),
       isBooting,
       refreshSession,
       clearSession,
     }),
-    [user, sessionToken, isBooting, refreshSession, clearSession]
+    [user, isBooting, refreshSession, clearSession]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

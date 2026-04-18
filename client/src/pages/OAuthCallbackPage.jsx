@@ -10,7 +10,6 @@ export default function OAuthCallbackPage() {
   const navigate = useNavigate();
   const { refreshSession, clearSession } = useAuth();
   const [error, setError] = useState("");
-  const processedQuery = useRef(null);
   const hasFinalized = useRef(false);
 
   useEffect(() => {
@@ -18,58 +17,20 @@ export default function OAuthCallbackPage() {
       return;
     }
 
-    const query = window.location.search;
-
-    if (processedQuery.current === query) {
-      return;
-    }
-    processedQuery.current = query;
-
-    const params = new URLSearchParams(query);
-    const accessToken = params.get("access_token") || params.get("token");
-    const oauthError = params.get("error");
-    const missingScopes = params.get("missing");
-    const isDuplicateCode = oauthError === "duplicate_code";
-
     const finalize = async () => {
       hasFinalized.current = true;
-      console.log("OAuth callback processed once");
-      window.localStorage.removeItem("willow_oauth_inflight");
 
       try {
-        if (accessToken) {
-          window.localStorage.setItem("willow_access_token", accessToken);
-        }
-
-        // If session already exists, skip all callback error handling and proceed.
         const user = await refreshSession();
         if (user) {
           navigate("/dashboard", { replace: true });
           return;
         }
 
-        if (oauthError && !isDuplicateCode) {
-          if (oauthError === "missing_scopes" && missingScopes) {
-            throw new Error(`Missing Spotify scopes: ${decodeURIComponent(missingScopes)}`);
-          }
-
-          throw new Error("Spotify authorization failed. Please try again.");
-        }
-
-        if (isDuplicateCode) {
-          navigate("/dashboard", { replace: true });
-          return;
-        }
-
         navigate("/dashboard", { replace: true });
-      } catch (err) {
-        if (isDuplicateCode) {
-          navigate("/dashboard", { replace: true });
-          return;
-        }
-
+      } catch {
         clearSession();
-        setError(err?.message || "Could not complete login.");
+        setError("Could not complete login.");
       } finally {
         window.history.replaceState({}, "", window.location.pathname);
       }

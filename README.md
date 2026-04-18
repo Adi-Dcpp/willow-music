@@ -61,7 +61,7 @@ npm run dev
 
 ### Frontend
 
-- `VITE_API_URL`
+- `VITE_API_BASE_URL` (without `/api`)
 
 ## Production Deployment
 
@@ -78,7 +78,7 @@ npm run dev
 - Root directory: `client`
 - Build command: `npm run build`
 - Output directory: `dist`
-- Set `VITE_API_URL` to the Render backend API URL
+- Set `VITE_API_BASE_URL` to the Render backend URL (without `/api`)
 
 ### Spotify OAuth
 

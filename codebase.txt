@@ -1,43 +1,12 @@
 ===== client/src/api/client.js =====
 import axios from "axios";
+import { API_ROOT_URL } from "../config/api";
 
-const getApiBaseUrl = () => {
-  const backendUrl = import.meta.env.VITE_BACKEND_URL;
-  const apiUrl = import.meta.env.VITE_API_URL;
-
-  if (backendUrl) {
-    return `${backendUrl.replace(/\/+$/, "")}/api`;
-  }
-
-  if (apiUrl) {
-    return apiUrl;
-  }
-
-  if (import.meta.env.DEV) {
-    return "http://127.0.0.1:5000/api";
-  }
-
-  throw new Error("VITE_BACKEND_URL must be set in production");
-};
+axios.defaults.withCredentials = true;
 
 export const api = axios.create({
-  baseURL: getApiBaseUrl(),
+  baseURL: API_ROOT_URL,
   withCredentials: true,
-});
-
-api.interceptors.request.use((config) => {
-  const token =
-    window.localStorage.getItem("spotify_token") ||
-    window.localStorage.getItem("willow_access_token");
-
-  if (token) {
-    config.headers = {
-      ...(config.headers || {}),
-      Authorization: `Bearer ${token}`,
-    };
-  }
-
-  return config;
 });
 
 api.interceptors.response.use(
@@ -1100,6 +1069,19 @@ export default function ThemeSelector() {
 }
 
 
+===== client/src/config/api.js =====
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim();
+
+if (!API_BASE_URL) {
+  throw new Error("VITE_API_BASE_URL is not set");
+}
+
+// Normalize accidental trailing slashes or '/api' suffixes.
+const normalizedApiBaseUrl = API_BASE_URL.replace(/\/+$/, "").replace(/\/api$/, "");
+
+export const API_ROOT_URL = `${normalizedApiBaseUrl}/api`;
+
+
 ===== client/src/context/AuthContext.jsx =====
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
@@ -1107,16 +1089,10 @@ import { api } from "../api/client";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [sessionToken, setSessionToken] = useState(
-    () => window.localStorage.getItem("spotify_token") || ""
-  );
   const [user, setUser] = useState(null);
   const [isBooting, setIsBooting] = useState(true);
 
   const clearSession = useCallback(() => {
-    window.localStorage.removeItem("spotify_token");
-    window.localStorage.removeItem("willow_access_token");
-    setSessionToken("");
     setUser(null);
   }, []);
 
@@ -1139,11 +1115,7 @@ export function AuthProvider({ children }) {
         await refreshSession();
       } catch {
         if (mounted) {
-          const token = window.localStorage.getItem("spotify_token") || "";
-          setSessionToken(token);
-          if (!token) {
-            clearSession();
-          }
+          clearSession();
         }
       } finally {
         if (mounted) setIsBooting(false);
@@ -1166,12 +1138,12 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
-      isAuthenticated: Boolean(user || sessionToken),
+      isAuthenticated: Boolean(user),
       isBooting,
       refreshSession,
       clearSession,
     }),
-    [user, sessionToken, isBooting, refreshSession, clearSession]
+    [user, isBooting, refreshSession, clearSession]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -1476,9 +1448,13 @@ createRoot(document.getElementById('root')).render(
 
 ===== client/src/pages/CallbackPage.jsx =====
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function CallbackPage() {
   const hasFinalized = useRef(false);
+  const navigate = useNavigate();
+  const { refreshSession, clearSession } = useAuth();
 
   useEffect(() => {
     if (hasFinalized.current) {
@@ -1487,23 +1463,27 @@ export default function CallbackPage() {
 
     hasFinalized.current = true;
 
-    const finalize = () => {
+    const finalize = async () => {
       const params = new URLSearchParams(window.location.search);
-      const token = params.get("token");
+      const oauthError = params.get("error");
 
-      if (token) {
-        console.log("TOKEN:", token);
-        window.localStorage.setItem("spotify_token", token);
-        window.location.replace("/dashboard");
+      if (oauthError) {
+        clearSession();
+        navigate("/", { replace: true });
         return;
       }
 
-      console.log("No token found");
-      window.location.replace("/");
+      try {
+        await refreshSession();
+        navigate("/dashboard", { replace: true });
+      } catch {
+        clearSession();
+        navigate("/", { replace: true });
+      }
     };
 
     finalize();
-  }, []);
+  }, [clearSession, navigate, refreshSession]);
 
   return <div>Logging you in...</div>;
 }
@@ -2282,6 +2262,7 @@ import { useLocation } from "react-router-dom";
 import GlowButton from "../components/common/GlowButton";
 import FooterLinks from "../components/common/FooterLinks";
 import { useTheme } from "../context/ThemeContext";
+import { API_BASE_URL } from "../config/api";
 
 const features = [
   { icon: "🎭", label: "Music Identity" },
@@ -2309,17 +2290,11 @@ export default function LoginPage() {
       return;
     }
 
-    const token = window.localStorage.getItem("spotify_token");
-    if (token) {
-      console.log("User already logged in");
-      return;
-    }
-
     setLoading(true);
     window.setTimeout(() => {
       setLoading(false);
     }, REDIRECT_TIMEOUT_MS);
-    window.location.href = `${import.meta.env.VITE_BACKEND_URL}/api/auth/spotify/login`;
+    window.location.href = `${API_BASE_URL}/api/auth/spotify/login`;
   };
 
   return (
@@ -2471,7 +2446,6 @@ export default function OAuthCallbackPage() {
   const navigate = useNavigate();
   const { refreshSession, clearSession } = useAuth();
   const [error, setError] = useState("");
-  const processedQuery = useRef(null);
   const hasFinalized = useRef(false);
 
   useEffect(() => {
@@ -2479,58 +2453,20 @@ export default function OAuthCallbackPage() {
       return;
     }
 
-    const query = window.location.search;
-
-    if (processedQuery.current === query) {
-      return;
-    }
-    processedQuery.current = query;
-
-    const params = new URLSearchParams(query);
-    const accessToken = params.get("access_token") || params.get("token");
-    const oauthError = params.get("error");
-    const missingScopes = params.get("missing");
-    const isDuplicateCode = oauthError === "duplicate_code";
-
     const finalize = async () => {
       hasFinalized.current = true;
-      console.log("OAuth callback processed once");
-      window.localStorage.removeItem("willow_oauth_inflight");
 
       try {
-        if (accessToken) {
-          window.localStorage.setItem("willow_access_token", accessToken);
-        }
-
-        // If session already exists, skip all callback error handling and proceed.
         const user = await refreshSession();
         if (user) {
           navigate("/dashboard", { replace: true });
           return;
         }
 
-        if (oauthError && !isDuplicateCode) {
-          if (oauthError === "missing_scopes" && missingScopes) {
-            throw new Error(`Missing Spotify scopes: ${decodeURIComponent(missingScopes)}`);
-          }
-
-          throw new Error("Spotify authorization failed. Please try again.");
-        }
-
-        if (isDuplicateCode) {
-          navigate("/dashboard", { replace: true });
-          return;
-        }
-
         navigate("/dashboard", { replace: true });
-      } catch (err) {
-        if (isDuplicateCode) {
-          navigate("/dashboard", { replace: true });
-          return;
-        }
-
+      } catch {
         clearSession();
-        setError(err?.message || "Could not complete login.");
+        setError("Could not complete login.");
       } finally {
         window.history.replaceState({}, "", window.location.pathname);
       }
@@ -3510,1695 +3446,6 @@ app.use(globalErrorHandler);
 
 export default app;
 
-===== server/src/codebaes.txt =====
-# Server Src Codebase Snapshot
-
-Generated: 2026-04-18T15:30:00Z
-Root: server/src
-
-## File Tree
-server/src/app.js
-server/src/controllers/ai.controller.js
-server/src/controllers/auth.controller.js
-server/src/controllers/og.controller.js
-server/src/controllers/snapshot.controller.js
-server/src/controllers/spotify.controller.js
-server/src/controllers/user.controller.js
-server/src/db/index.db.js
-server/src/index.js
-server/src/middleware/auth.middlewares.js
-server/src/middleware/error.middlewares.js
-server/src/middleware/rateLimiter.middlewares.js
-server/src/models/snapshot.model.js
-server/src/models/user.model.js
-server/src/routes/ai.routes.js
-server/src/routes/auth.routes.js
-server/src/routes/og.routes.js
-server/src/routes/snapshot.routes.js
-server/src/routes/spotify.routes.js
-server/src/routes/user.routes.js
-server/src/services/ai.service.js
-server/src/services/spotify.service.js
-server/src/utils/api-error.utils.js
-server/src/utils/api-response.utils.js
-server/src/utils/async-handler.utils.js
-server/src/utils/cache.utils.js
-server/src/utils/id.utils.js
-server/src/utils/insight.utils.js
-server/src/utils/jwt.utils.js
-server/src/utils/summary.utils.js
-
-## File Contents
-
-===== BEGIN FILE: server/src/app.js =====
-import express from "express";
-import cors from "cors";
-import cookieParser from "cookie-parser";
-
-import authRoutes from "./routes/auth.routes.js";
-import userRoutes from "./routes/user.routes.js";
-import spotifyRoutes from "./routes/spotify.routes.js";
-import snapshotRoutes from "./routes/snapshot.routes.js";
-import ogRoutes from "./routes/og.routes.js";
-import aiRoutes from "./routes/ai.routes.js";
-import { globalErrorHandler } from "./middleware/error.middlewares.js";
-import { rateLimiter } from "./middleware/rateLimiter.middlewares.js";
-
-const app = express();
-
-const allowedOrigins = new Set([
-  process.env.FRONTEND_URL,
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-]);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.has(origin)) {
-      return callback(null, true);
-    }
-
-    return callback(new Error("Not allowed by CORS"));
-  },
-  credentials: true
-}));
-
-app.use(express.json());
-app.use(cookieParser());
-app.use(rateLimiter);
-
-app.get("/", (req, res) => {
-  res.send("Willow API is alive 🌿");
-});
-
-app.use("/api/auth", authRoutes);
-app.use("/api/user", userRoutes);
-app.use("/api/top", spotifyRoutes);
-app.use("/api/share", snapshotRoutes);
-app.use("/api/og", ogRoutes);
-app.use("/api/ai", aiRoutes);
-/**
- * When frontend loads /share/:shareId, add:
-
-<meta property="og:title" content="My Willow Snapshot" />
-<meta property="og:image" content="https://yourapi.com/api/og/abc123" />
-<meta property="og:type" content="website" />
- */
-
-app.use(globalErrorHandler);
-
-export default app;
-===== END FILE: server/src/app.js =====
-
-===== BEGIN FILE: server/src/controllers/ai.controller.js =====
-import { asyncHandler } from "../utils/async-handler.utils.js";
-import { generatePersonalityReview } from "../services/ai.service.js";
-import { getAIReviewCache, setAIReviewCache, hashSummary } from "../utils/cache.utils.js";
-
-const FALLBACK_REVIEW = "Your taste is clean, intentional, and emotionally rich. You pick sounds that feel personal, not random.";
-
-const reviewSummary = asyncHandler(async (req, res) => {
-  const summary = req.body?.summary;
-  const { userId } = req.user;
-
-  if (!summary || typeof summary !== "object") {
-    return res.status(400).json({
-      review: FALLBACK_REVIEW,
-    });
-  }
-
-  try {
-    // Check cache first: userId + summary hash
-    const summaryHash = hashSummary(summary);
-    const cachedReview = getAIReviewCache(userId, summaryHash);
-
-    if (cachedReview) {
-      return res.status(200).json({ review: cachedReview, cached: true });
-    }
-
-    // Generate if not cached
-    const review = await generatePersonalityReview(summary);
-
-    // Store in cache
-    setAIReviewCache(userId, summaryHash, review);
-
-    return res.status(200).json({ review });
-  } catch {
-    return res.status(200).json({
-      review: FALLBACK_REVIEW,
-    });
-  }
-});
-
-export { reviewSummary };
-
-===== END FILE: server/src/controllers/ai.controller.js =====
-
-===== BEGIN FILE: server/src/controllers/auth.controller.js =====
-import { asyncHandler } from "../utils/async-handler.utils.js";
-import { User } from "../models/user.model.js";
-import { generateAccessToken, generateRefreshToken } from "../utils/jwt.utils.js";
-import { ApiError } from "../utils/api-error.utils.js";
-import crypto from "crypto";
-
-import {
-  getSpotifyAuthURL,
-  exchangeCodeForToken,
-  getSpotifyUserProfile,
-} from "../services/spotify.service.js";
-
-const authStateStore = new Map();
-const AUTH_STATE_TTL_MS = 5 * 60 * 1000;
-const REQUIRED_SPOTIFY_SCOPES = [
-  "user-top-read",
-];
-
-const setAuthState = (state) => {
-  authStateStore.set(state, Date.now() + AUTH_STATE_TTL_MS);
-};
-
-const consumeAuthState = (state) => {
-  const expiresAt = authStateStore.get(state);
-  authStateStore.delete(state);
-
-  return Boolean(expiresAt && expiresAt > Date.now());
-};
-
-const loginWithSpotify = asyncHandler(async (req, res) => {
-  const state = crypto.randomBytes(16).toString("hex");
-
-  const url = getSpotifyAuthURL({ state });
-  setAuthState(state);
-
-  res.cookie("spotify_auth_state", state, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 5 * 60 * 1000,
-  });
-
-  return res.redirect(url);
-});
-
-const spotifyCallback = asyncHandler(async (req, res) => {
-  const { code, state, error } = req.query;
-  const frontendURL = process.env.FRONTEND_URL || "http://localhost:5173";
-
-  if (error) {
-    return res.redirect(`${frontendURL}/auth/callback?error=spotify_auth_failed`);
-  }
-
-  if (!code) {
-    throw new ApiError(400, "Authorization code missing");
-  }
-
-  const storedState = req.cookies?.spotify_auth_state;
-  const matchedCookieState = Boolean(state && storedState && state === storedState);
-  const matchedStoredState = Boolean(state && consumeAuthState(state));
-
-  if (!matchedCookieState && !matchedStoredState) {
-    throw new ApiError(400, "State mismatch");
-  }
-
-  res.clearCookie("spotify_auth_state");
-
-  const tokenData = await exchangeCodeForToken({ code });
-  const spotifyScopes = (tokenData.scope || "")
-    .split(" ")
-    .map((scope) => scope.trim())
-    .filter(Boolean);
-
-  const missingScopes = REQUIRED_SPOTIFY_SCOPES.filter(
-    (scope) => !spotifyScopes.includes(scope)
-  );
-
-  if (missingScopes.length) {
-    return res.redirect(
-      `${frontendURL}/auth/callback?error=missing_scopes&missing=${encodeURIComponent(
-        missingScopes.join(",")
-      )}`
-    );
-  }
-
-  const spotifyProfile = await getSpotifyUserProfile({
-    accessToken: tokenData.accessToken,
-  });
-
-  const expiresAt = Date.now() + tokenData.expiresIn * 1000;
-
-  let user = await User.findOne({
-    spotifyUserId: spotifyProfile.spotifyUserId,
-  });
-
-  if (!user) {
-    user = await User.create({
-      spotifyUserId: spotifyProfile.spotifyUserId,
-      displayName: spotifyProfile.displayName,
-      profileImage: spotifyProfile.profileImage,
-      spotifyEmail: spotifyProfile.spotifyEmail,
-      accessToken: tokenData.accessToken,
-      refreshToken: tokenData.refreshToken,
-      tokenExpiresAt: expiresAt,
-      spotifyScopes,
-    });
-  } else {
-    user.accessToken = tokenData.accessToken;
-    user.refreshToken = tokenData.refreshToken;
-    user.tokenExpiresAt = expiresAt;
-    user.spotifyEmail = spotifyProfile.spotifyEmail;
-    user.spotifyScopes = spotifyScopes;
-
-    await user.save();
-  }
-
-  const jwtToken = generateAccessToken({
-    userId: user._id,
-    spotifyUserId: user.spotifyUserId,
-  });
-
-  const refreshToken = generateRefreshToken({
-    userId: user._id,
-    spotifyUserId: user.spotifyUserId,
-  });
-
-  res.cookie("accessToken", jwtToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 15 * 60 * 1000,
-  });
-
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 24 * 60 * 60 * 1000,
-  });
-
-  return res.redirect(`${frontendURL}/auth/callback?token=${encodeURIComponent(jwtToken)}`);
-});
-
-const logout = asyncHandler(async (req, res) => {
-  res.clearCookie("accessToken", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
-
-  res.clearCookie("refreshToken", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
-
-  res.clearCookie("spotify_auth_state", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
-
-  return res.status(200).json({
-    success: true,
-    message: "Logged out successfully",
-  });
-});
-
-export { loginWithSpotify, spotifyCallback, logout };
-===== END FILE: server/src/controllers/auth.controller.js =====
-
-===== BEGIN FILE: server/src/controllers/og.controller.js =====
-import { ImageResponse } from "@vercel/og";
-import React from "react";
-import { Snapshot } from "../models/snapshot.model.js";
-
-export const generateOGImage = async (req, res) => {
-  try {
-    const { shareId } = req.params;
-
-    const snapshot = await Snapshot.findOne({
-      shareId,
-      deletedAt: null,
-    });
-
-    if (!snapshot) {
-      return res.status(404).send("Snapshot not found");
-    }
-
-    const { topArtists, insights } = snapshot;
-
-    const topArtistNames = topArtists
-      .slice(0, 3)
-      .map((a) => a.name)
-      .join(", ");
-
-    const topGenre = insights?.topGenres?.[0]?.genre || "Music";
-
-    const image = new ImageResponse(
-      React.createElement(
-        "div",
-        {
-          style: {
-            width: "100%",
-            height: "100%",
-            background: "#0f172a",
-            color: "white",
-            padding: "40px",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-          },
-        },
-        React.createElement("h1", { style: { fontSize: 60 } }, "🎧 Willow"),
-        React.createElement(
-          "p",
-          { style: { fontSize: 30 } },
-          `Top Artists: ${topArtistNames}`
-        ),
-        React.createElement(
-          "p",
-          { style: { fontSize: 24 } },
-          `Genre: ${topGenre}`
-        )
-      ),
-      {
-        width: 1200,
-        height: 630,
-      }
-    );
-
-    res.setHeader("Content-Type", "image/png");
-    const imageBuffer = Buffer.from(await image.arrayBuffer());
-    return res.send(imageBuffer);
-  } catch (err) {
-    return res.status(500).send("Failed to generate OG image");
-  }
-};
-===== END FILE: server/src/controllers/og.controller.js =====
-
-===== BEGIN FILE: server/src/controllers/snapshot.controller.js =====
-import { asyncHandler } from "../utils/async-handler.utils.js";
-import { ApiError } from "../utils/api-error.utils.js";
-import { ApiResponse } from "../utils/api-response.utils.js";
-import { Snapshot } from "../models/snapshot.model.js";
-import { generateShareId } from "../utils/id.utils.js";
-import {
-  getUserTopArtists,
-  getUserTopTracks,
-} from "../services/spotify.service.js";
-import { getValidSpotifyAccessToken } from "./spotify.controller.js";
-import { User } from "../models/user.model.js";
-import { buildUserSummary } from "../utils/summary.utils.js";
-
-const createSnapshot = asyncHandler(async (req, res) => {
-  const { userId, spotifyUserId } = req.user;
-
-  const { timeRange = "medium_term" } = req.body;
-
-  const user = await User.findById(userId).select(
-    "accessToken refreshToken tokenExpiresAt",
-  );
-
-  if (!user) throw new ApiError(404, "User not found");
-
-  const accessToken = await getValidSpotifyAccessToken(user);
-
-  const [topTracks, topArtists] = await Promise.all([
-    getUserTopTracks({ accessToken, timeRange, limit: 10 }),
-    getUserTopArtists({ accessToken, timeRange, limit: 10 }),
-  ]);
-
-  // Build summary for lighter, AI-ready snapshot
-  const summaryResult = buildUserSummary(topTracks, topArtists);
-
-  const shareId = generateShareId();
-
-  const snapshot = await Snapshot.create({
-    shareId,
-    spotifyUserId,
-    timeRange,
-    topTracks: summaryResult.topTracks,
-    topArtists: summaryResult.topArtists,
-    summary: summaryResult.summary,
-  });
-
-  return res.status(201).json(
-    new ApiResponse(201, "Snapshot created", {
-      shareId,
-      shareUrl: `/share/${shareId}`,
-    }),
-  );
-});
-
-const getSnapshot = asyncHandler(async (req, res) => {
-  const { shareId } = req.params;
-
-  const snapshot = await Snapshot.findOne({
-    shareId,
-    deletedAt: null,
-  });
-
-  if (!snapshot) {
-    throw new ApiError(404, "Snapshot not found");
-  }
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, "Snapshot fetched", snapshot));
-});
-
-
-const deleteSnapshot = asyncHandler(async (req, res) => {
-  const { shareId } = req.params;
-  const { spotifyUserId } = req.user;
-
-  const snapshot = await Snapshot.findOne({
-    shareId,
-    deletedAt: null,
-  });
-
-  if (!snapshot) {
-    throw new ApiError(404, "Snapshot not found");
-  }
-
-  if (snapshot.spotifyUserId !== spotifyUserId) {
-    throw new ApiError(403, "You are not allowed to delete this snapshot");
-  }
-
-  snapshot.deletedAt = new Date();
-  await snapshot.save();
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, "Snapshot deleted successfully"));
-});
-
-export {
-    createSnapshot,
-    getSnapshot,
-    deleteSnapshot
-}
-
-===== END FILE: server/src/controllers/snapshot.controller.js =====
-
-===== BEGIN FILE: server/src/controllers/spotify.controller.js =====
-import { asyncHandler } from "../utils/async-handler.utils.js";
-import { ApiError } from "../utils/api-error.utils.js";
-import { ApiResponse } from "../utils/api-response.utils.js";
-import { User } from "../models/user.model.js";
-import {
-  getUserTopTracks,
-  getUserTopArtists,
-} from "../services/spotify.service.js";
-import { getCache, setCache } from "../utils/cache.utils.js";
-import { buildUserSummary } from "../utils/summary.utils.js";
-
-const getValidSpotifyAccessToken = async (user) => {
-  const bufferTime = 60 * 1000;
-
-  if (user.tokenExpiresAt && Date.now() < user.tokenExpiresAt - bufferTime) {
-    return user.accessToken;
-  }
-
-  if (!user.refreshToken) {
-    throw new ApiError(401, "Spotify refresh token missing");
-  }
-
-  const response = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization:
-        "Basic " +
-        Buffer.from(
-          `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
-        ).toString("base64"),
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: user.refreshToken,
-    }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new ApiError(
-      401,
-      data.error_description || "Failed to refresh Spotify token"
-    );
-  }
-
-  user.accessToken = data.access_token;
-  user.tokenExpiresAt = Date.now() + data.expires_in * 1000;
-
-  if (data.refresh_token) {
-    user.refreshToken = data.refresh_token;
-  }
-
-  await user.save();
-
-  return user.accessToken;
-};
-
-const getUserOrThrow = async (userId) => {
-  const user = await User.findById(userId).select(
-    "accessToken refreshToken tokenExpiresAt"
-  );
-
-  if (!user) throw new ApiError(404, "User does not exist");
-
-  const accessToken = await getValidSpotifyAccessToken(user);
-
-  if (!accessToken) {
-    throw new ApiError(401, "Spotify access token missing");
-  }
-
-  return user;
-};
-
-const validateQuery = (timeRange, limit) => {
-  const validRanges = ["short_term", "medium_term", "long_term"];
-
-  if (!validRanges.includes(timeRange)) {
-    throw new ApiError(400, "Invalid timeRange");
-  }
-
-  return Math.min(Math.max(Number(limit) || 20, 1), 50);
-};
-
-const getTopTracks = asyncHandler(async (req, res) => {
-  const { userId } = req.user;
-  const user = await getUserOrThrow(userId);
-
-  const { timeRange = "long_term", limit = 20 } = req.query;
-  const parsedLimit = validateQuery(timeRange, limit);
-
-  const accessToken = user.accessToken;
-
-  const topTracks = await getUserTopTracks({
-    accessToken,
-    timeRange,
-    limit: parsedLimit,
-  });
-
-  return res.status(200).json(
-    new ApiResponse(200, "User's top tracks fetched successfully", {
-      timeRange,
-      topTracks,
-    })
-  );
-});
-
-const getTopArtists = asyncHandler(async (req, res) => {
-  const { userId } = req.user;
-  const user = await getUserOrThrow(userId);
-
-  const { timeRange = "short_term", limit = 20 } = req.query;
-  const parsedLimit = validateQuery(timeRange, limit);
-
-  const accessToken = user.accessToken;
-
-  const topArtists = await getUserTopArtists({
-    accessToken,
-    timeRange,
-    limit: parsedLimit,
-  });
-
-  return res.status(200).json(
-    new ApiResponse(200, "User's top artists fetched successfully", {
-      timeRange,
-      topArtists,
-    })
-  );
-});
-
-const getTop = asyncHandler(async (req, res) => {
-  const { userId } = req.user;
-  const user = await getUserOrThrow(userId);
-
-  const { timeRange = "medium_term", limit = 20 } = req.query;
-  const parsedLimit = validateQuery(timeRange, limit);
-
-  const cacheKey = `${userId}_${timeRange}_${parsedLimit}_insights`;
-
-  const cachedData = getCache(cacheKey);
-  if (cachedData) {
-    return res.status(200).json(cachedData);
-  }
-
-  const accessToken = user.accessToken;
-
-  const [topTracks, topArtists] = await Promise.all([
-    getUserTopTracks({
-      accessToken,
-      timeRange,
-      limit: parsedLimit,
-    }),
-    getUserTopArtists({
-      accessToken,
-      timeRange,
-      limit: parsedLimit,
-    }),
-  ]);
-
-  const result = buildUserSummary(topTracks?.items || topTracks, topArtists?.items || topArtists);
-
-  setCache(cacheKey, result);
-
-  return res.status(200).json(result);
-});
-
-export {
-  getTopTracks,
-  getTopArtists,
-  getTop,
-  getValidSpotifyAccessToken,
-  getUserOrThrow,
-};
-===== END FILE: server/src/controllers/spotify.controller.js =====
-
-===== BEGIN FILE: server/src/controllers/user.controller.js =====
-import { asyncHandler } from "../utils/async-handler.utils.js";
-import { ApiError } from "../utils/api-error.utils.js";
-import { ApiResponse } from "../utils/api-response.utils.js"
-import { User } from "../models/user.model.js"
-
-const getCurrentUser = asyncHandler(async(req, res) => {
-    const { userId } = req.user;
-
-    const user = await User.findById(userId).select("spotifyUserId displayName profileImage spotifyEmail spotifyScopes")
-
-    if(!user) {
-        throw new ApiError(404, "User does not exist")
-    }
-
-    return res  
-        .status(200)
-        .json(
-            new ApiResponse(
-                200,
-                "User data fetched successfully",
-                {
-                    spotifyUserId : user.spotifyUserId,
-                    displayName : user.displayName,
-                    profileImage : user.profileImage,
-                    spotifyEmail : user.spotifyEmail,
-                    spotifyScopes : user.spotifyScopes || []
-                }
-            )
-        )
-})
-
-export {
-    getCurrentUser
-}
-===== END FILE: server/src/controllers/user.controller.js =====
-
-===== BEGIN FILE: server/src/db/index.db.js =====
-import mongoose from "mongoose";
-
-const connectDB = async () => {
-  try {
-    const connectionInstance = await mongoose.connect(process.env.MONGODB_URI);
-
-    console.log(`🌿 MongoDB Connected: ${connectionInstance.connection.host}`);
-  } catch (error) {
-    console.error("❌ MongoDB connection failed:", error.message);
-    process.exit(1);
-  }
-};
-
-export default connectDB;
-===== END FILE: server/src/db/index.db.js =====
-
-===== BEGIN FILE: server/src/index.js =====
-import "dotenv/config";
-import app from "./app.js";
-import connectDB from "./db/index.db.js";
-
-const PORT = process.env.PORT || 5000;
-
-connectDB()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`🌿 Server running at http://localhost:${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error("Failed to start server:", err);
-  });
-===== END FILE: server/src/index.js =====
-
-===== BEGIN FILE: server/src/middleware/auth.middlewares.js =====
-import { ApiError } from "../utils/api-error.utils.js";
-import jwt from "jsonwebtoken";
-import { asyncHandler } from "../utils/async-handler.utils.js";
-import { generateAccessToken } from "../utils/jwt.utils.js";
-
-const issueAccessTokenFromRefresh = (req, res) => {
-  const refreshToken = req.cookies?.refreshToken;
-
-  if (!refreshToken) {
-    throw new ApiError(401, "Refresh token is missing");
-  }
-
-  try {
-    const decodedRefresh = jwt.verify(
-      refreshToken,
-      process.env.REFRESH_TOKEN_SECRET
-    );
-
-    const newAccessToken = generateAccessToken({
-      userId: decodedRefresh.userId,
-      spotifyUserId: decodedRefresh.spotifyUserId,
-    });
-
-    res.cookie("accessToken", newAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 15 * 60 * 1000,
-    });
-
-    req.user = {
-      userId: decodedRefresh.userId,
-      spotifyUserId: decodedRefresh.spotifyUserId,
-    };
-
-    return true;
-  } catch (err) {
-    throw new ApiError(401, "Invalid or expired refresh token");
-  }
-};
-
-const authenticateToken = asyncHandler(async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-
-  const bearerToken = authHeader?.startsWith("Bearer ")
-    ? authHeader.split(" ")[1]
-    : null;
-
-  const cookieToken = req.cookies?.accessToken;
-
-  const token = bearerToken || cookieToken;
-
-  if (!token) {
-    issueAccessTokenFromRefresh(req, res);
-    return next();
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-
-    req.user = {
-      userId: decoded.userId,
-      spotifyUserId: decoded.spotifyUserId,
-    };
-
-    return next();
-  } catch (err) {
-    issueAccessTokenFromRefresh(req, res);
-    return next();
-  }
-});
-
-export { authenticateToken };
-===== END FILE: server/src/middleware/auth.middlewares.js =====
-
-===== BEGIN FILE: server/src/middleware/error.middlewares.js =====
-import { ApiError } from "../utils/api-error.utils.js";
-
-const globalErrorHandler = (err, req, res, next) => {
-    const statusCode = err instanceof ApiError ? err.statusCode : 500;
-    const message = err instanceof ApiError ? err.message : "Internal Server Error";
-    const errors = err instanceof ApiError ? err.errors : [];
-    const stack = process.env.NODE_ENV === "development" ? err.stack : undefined;
-
-    const payload = {
-        success: false,
-        message,
-        errors,
-        data: null,
-        timestamp: new Date().toISOString(),
-    };
-
-    if (stack) {
-        payload.stack = stack;
-    }
-
-    res.status(statusCode).json(payload);
-}
-
-export {
-    globalErrorHandler
-}
-===== END FILE: server/src/middleware/error.middlewares.js =====
-
-===== BEGIN FILE: server/src/middleware/rateLimiter.middlewares.js =====
-import { ApiError } from "../utils/api-error.utils.js";
-import { rateLimit } from "express-rate-limit";
-
-const rateLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100,
-    standardHeaders: true, // Return rate limit info in headers
-    legacyHeaders: false,
-
-    handler: (req, res, next) => {
-        next(
-            new ApiError(
-                429,
-                "Too many requests from this IP, please try again after 15 minutes"
-            )
-        );
-    },
-});
-
-export {
-    rateLimiter
-};
-===== END FILE: server/src/middleware/rateLimiter.middlewares.js =====
-
-===== BEGIN FILE: server/src/models/snapshot.model.js =====
-import mongoose from "mongoose";
-
-const snapshotSchema = new mongoose.Schema(
-  {
-    shareId: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-    },
-
-    spotifyUserId: {
-      type: String,
-      required: true,
-      index: true,
-    },
-
-    timeRange: {
-      type: String,
-      enum: ["short_term", "medium_term", "long_term"],
-      required: true,
-    },
-
-    topArtists: [
-      {
-        id: String,
-        name: String,
-        imageUrl: String,
-        genres: [String],
-      },
-    ],
-
-    topTracks: [
-      {
-        id: String,
-        name: String,
-        artistNames: [String],
-        albumImageUrl: String,
-      },
-    ],
-
-    summary: {
-      topGenres: [String],
-      topArtist: String,
-      vibe: String,
-      depthScore: Number,
-    },
-
-    insights: {
-      tasteDriftScore: {
-        type: Number,
-        default: null,
-      },
-      topGenres: [
-        {
-          genre: String,
-          count: Number,
-        },
-      ],
-    },
-
-    deletedAt: {
-      type: Date,
-      default: null,
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
-
-export const Snapshot = mongoose.model("Snapshot", snapshotSchema);
-===== END FILE: server/src/models/snapshot.model.js =====
-
-===== BEGIN FILE: server/src/models/user.model.js =====
-import mongoose from "mongoose";
-
-const userSchema = new mongoose.Schema(
-  {
-    spotifyUserId: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-    },
-
-    displayName: {
-      type: String,
-      required: true,
-    },
-
-    spotifyEmail: {
-      type: String,
-      default: null,
-      index: true,
-    },
-
-    profileImage: {
-      type: String,
-      default: null,
-    },
-
-    accessToken: {
-      type: String,
-      required: true,
-    },
-
-    refreshToken: {
-      type: String,
-      required: true,
-    },
-
-    tokenExpiresAt: {
-      type: Date,
-      required: true,
-    },
-
-    spotifyScopes: {
-      type: [String],
-      default: [],
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
-
-export const User = mongoose.model("User", userSchema);
-===== END FILE: server/src/models/user.model.js =====
-
-===== BEGIN FILE: server/src/routes/ai.routes.js =====
-import { Router } from "express";
-import { reviewSummary } from "../controllers/ai.controller.js";
-import { authenticateToken } from "../middleware/auth.middlewares.js";
-
-const router = Router();
-
-router.use(authenticateToken);
-router.post("/review", reviewSummary);
-
-export default router;
-
-===== END FILE: server/src/routes/ai.routes.js =====
-
-===== BEGIN FILE: server/src/routes/auth.routes.js =====
-import { Router } from "express";
-import {
-  loginWithSpotify,
-  spotifyCallback,
-  logout,
-} from "../controllers/auth.controller.js";
-
-const router = Router();
-
-router.get("/spotify/login", loginWithSpotify);
-
-router.get("/spotify/callback", spotifyCallback);
-
-router.post("/logout", logout);
-
-export default router;
-===== END FILE: server/src/routes/auth.routes.js =====
-
-===== BEGIN FILE: server/src/routes/og.routes.js =====
-import { Router } from "express";
-import { generateOGImage } from "../controllers/og.controller.js";
-
-const router = Router();
-
-router.get("/:shareId", generateOGImage);
-
-export default router;
-===== END FILE: server/src/routes/og.routes.js =====
-
-===== BEGIN FILE: server/src/routes/snapshot.routes.js =====
-import { Router } from "express";
-import { createSnapshot, getSnapshot, deleteSnapshot } from "../controllers/snapshot.controller.js";
-import { authenticateToken } from "../middleware/auth.middlewares.js";
-
-const router = Router();
-
-router.post("/", authenticateToken, createSnapshot);
-router.get("/:shareId", getSnapshot); // public
-router.delete("/:shareId", authenticateToken, deleteSnapshot);
-export default router;
-===== END FILE: server/src/routes/snapshot.routes.js =====
-
-===== BEGIN FILE: server/src/routes/spotify.routes.js =====
-import { Router } from "express";
-import {
-  getTop,
-  getTopTracks,
-  getTopArtists,
-} from "../controllers/spotify.controller.js";
-import { authenticateToken } from "../middleware/auth.middlewares.js";
-
-const router = Router();
-
-// all routes protected
-router.use(authenticateToken);
-
-// main route
-router.get("/", getTop);
-
-// specific routes
-router.get("/tracks", getTopTracks);
-router.get("/artists", getTopArtists);
-
-export default router;
-===== END FILE: server/src/routes/spotify.routes.js =====
-
-===== BEGIN FILE: server/src/routes/user.routes.js =====
-import { Router } from "express";
-import { getCurrentUser } from "../controllers/user.controller.js";
-import { authenticateToken } from "../middleware/auth.middlewares.js";
-
-const router = Router();
-
-router.get("/me", authenticateToken, getCurrentUser);
-
-export default router;
-===== END FILE: server/src/routes/user.routes.js =====
-
-===== BEGIN FILE: server/src/services/ai.service.js =====
-import Groq from "groq-sdk";
-
-const getGroqClient = () => {
-  const apiKey = process.env.GROQ_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("GROQ_API_KEY is not configured");
-  }
-
-  return new Groq({ apiKey });
-};
-
-const validateSummary = (summary) => {
-  if (!summary || typeof summary !== "object") {
-    return false;
-  }
-
-  const topGenres = Array.isArray(summary.topGenres) ? summary.topGenres : [];
-  const topArtist = typeof summary.topArtist === "string" ? summary.topArtist : "Unknown";
-
-  return topGenres.length > 0 || topArtist !== "Unknown";
-};
-
-const generatePersonalityReview = async (summary) => {
-  if (!validateSummary(summary)) {
-    throw new Error("Invalid summary payload");
-  }
-
-  const topGenres = Array.isArray(summary.topGenres) ? summary.topGenres.slice(0, 3) : [];
-  const topArtist = typeof summary.topArtist === "string" ? summary.topArtist : "Unknown";
-  const vibe = typeof summary.vibe === "string" ? summary.vibe : "Balanced Listener";
-  const depthScore = typeof summary.depthScore === "number" ? summary.depthScore : 0;
-
-  const prompt = [
-    "You are a music personality writer.",
-    "Write exactly 2 to 3 short lines.",
-    "Tone: Gen Z, aesthetic, positive, and non-generic.",
-    "No hashtags, no emojis spam, no bullet points.",
-    `Top genres: ${topGenres.join(", ") || "Unknown"}`,
-    `Top artist: ${topArtist}`,
-    `Vibe: ${vibe}`,
-    `Depth score: ${depthScore}`,
-  ].join("\n");
-
-  const groq = getGroqClient();
-
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.1-8b-instant",
-    temperature: 0.8,
-    max_tokens: 140,
-    messages: [
-      {
-        role: "system",
-        content: "Keep responses concise, stylish, warm, and human.",
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-  });
-
-  return completion.choices?.[0]?.message?.content?.trim() || "Your music taste feels intentional and vibrant, with a clear emotional signature.";
-};
-
-export { generatePersonalityReview };
-
-===== END FILE: server/src/services/ai.service.js =====
-
-===== BEGIN FILE: server/src/services/spotify.service.js =====
-import axios from "axios";
-import { ApiError } from "../utils/api-error.utils.js";
-
-// Helper for Spotify Auth Header
-const getSpotifyAuthHeader = () =>
-  "Basic " +
-  Buffer.from(
-    `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`,
-  ).toString("base64");
-
-// 1. Get Spotify Auth URL
-const getSpotifyAuthURL = ({ state }) => {
-  const baseURL = "https://accounts.spotify.com/authorize";
-
-  const params = new URLSearchParams({
-    client_id: process.env.SPOTIFY_CLIENT_ID,
-    response_type: "code",
-    redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
-    show_dialog: "true",
-    scope: [
-      "user-top-read",
-    ].join(" "),
-    state,
-  });
-
-  return `${baseURL}?${params.toString()}`;
-};
-
-// 2. Exchange Code for Token
-const exchangeCodeForToken = async ({ code }) => {
-  try {
-    const url = "https://accounts.spotify.com/api/token";
-
-    const body = new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
-    });
-
-    const headers = {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: getSpotifyAuthHeader(),
-    };
-
-    const response = await axios.post(url, body.toString(), { headers });
-
-    const { access_token, refresh_token, expires_in, scope } = response.data;
-
-    return {
-      accessToken: access_token,
-      refreshToken: refresh_token,
-      expiresIn: expires_in,
-      expiresAt: Date.now() + expires_in * 1000,
-      scope,
-    };
-  } catch (error) {
-    throw new ApiError(
-      error.response?.status || 500,
-      error.response?.data?.error_description || "Failed to exchange code",
-    );
-  }
-};
-
-// 3. Get User Profile
-const getSpotifyUserProfile = async ({ accessToken }) => {
-  try {
-    const url = "https://api.spotify.com/v1/me";
-
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    const data = response.data;
-
-    return {
-      spotifyUserId: data.id,
-      displayName: data.display_name,
-      profileImage: data.images?.[0]?.url || null,
-      spotifyEmail: data.email || null,
-    };
-  } catch (error) {
-    throw new ApiError(
-      error.response?.status || 500,
-      "Failed to fetch user profile",
-    );
-  }
-};
-
-// 4. Refresh Access Token
-const refreshSpotifyAccessToken = async ({ refreshToken }) => {
-  try {
-    const url = "https://accounts.spotify.com/api/token";
-
-    const body = new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    });
-
-    const headers = {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: getSpotifyAuthHeader(),
-    };
-
-    const response = await axios.post(url, body.toString(), { headers });
-
-    const { access_token, expires_in } = response.data;
-
-    return {
-      accessToken: access_token,
-      expiresIn: expires_in,
-      expiresAt: Date.now() + expires_in * 1000,
-    };
-  } catch (error) {
-    throw new ApiError(
-      error.response?.status || 500,
-      "Failed to refresh access token",
-    );
-  }
-};
-
-// 5. Get Top Tracks
-const getUserTopTracks = async ({
-  accessToken,
-  timeRange = "short_term",
-  limit = 20,
-}) => {
-  try {
-    const url = "https://api.spotify.com/v1/me/top/tracks";
-
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      params: {
-        time_range: timeRange,
-        limit: Math.min(limit, 50),
-      },
-    });
-
-    return response.data.items.map((track) => ({
-      id: track.id,
-      name: track.name,
-      artistNames: track.artists.map((a) => a.name),
-      albumImageUrl: track.album.images?.[0]?.url || null,
-      uri: track.uri,
-    }));
-  } catch (error) {
-    throw new ApiError(
-      error.response?.status || 500,
-      "Failed to fetch top tracks",
-    );
-  }
-};
-
-// 6. Get Top Artists
-const getUserTopArtists = async ({
-  accessToken,
-  timeRange = "short_term",
-  limit = 20,
-}) => {
-  try {
-    const url = "https://api.spotify.com/v1/me/top/artists";
-
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      params: {
-        time_range: timeRange,
-        limit: Math.min(limit, 50),
-      },
-    });
-
-    return response.data.items.map((artist) => ({
-      id: artist.id,
-      name: artist.name,
-      genres: artist.genres,
-      imageUrl: artist.images?.[0]?.url || null,
-    }));
-  } catch (error) {
-    throw new ApiError(
-      error.response?.status || 500,
-      "Failed to fetch top artists",
-    );
-  }
-};
-
-export {
-  getSpotifyAuthURL,
-  exchangeCodeForToken,
-  getSpotifyUserProfile,
-  refreshSpotifyAccessToken,
-  getUserTopTracks,
-  getUserTopArtists,
-};
-
-===== END FILE: server/src/services/spotify.service.js =====
-
-===== BEGIN FILE: server/src/utils/api-error.utils.js =====
-class ApiError extends Error {
-  constructor(
-    statusCode,
-    message = "Something went wrong",
-    error = [],
-    stack = "",
-  ) {
-    super(message);
-    this.statusCode = statusCode;
-    this.errors = error;
-    this.success = false;
-    this.data = null;
-    this.timestamp = new Date();
-
-    if (stack) {
-      this.stack = stack;
-    } else {
-      Error.captureStackTrace(this, this.constructor);
-    }
-  }
-}
-
-export {
-    ApiError
-}
-
-===== END FILE: server/src/utils/api-error.utils.js =====
-
-===== BEGIN FILE: server/src/utils/api-response.utils.js =====
-class ApiResponse {
-    constructor(statusCode , message = "Success" , data = null){
-        this.statusCode = statusCode;
-        this.message = message;
-        this.data = data;
-        this.timestamp = new Date();
-        this.success = statusCode < 400;
-    }
-}
-
-export {
-    ApiResponse
-}
-===== END FILE: server/src/utils/api-response.utils.js =====
-
-===== BEGIN FILE: server/src/utils/async-handler.utils.js =====
-const asyncHandler = (asyncRequest) => {
-  return (req, res, next) => {
-    Promise.resolve(asyncRequest(req, res, next)).catch((err) => next(err));
-  };
-};
-
-export { asyncHandler };
-
-===== END FILE: server/src/utils/async-handler.utils.js =====
-
-===== BEGIN FILE: server/src/utils/cache.utils.js =====
-import crypto from "crypto";
-
-const cache = new Map();
-const aiReviewCache = new Map();
-
-const CACHE_TTL = 5 * 60 * 1000; // 5 min
-const AI_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
-
-// Hash summary object for cache key
-export const hashSummary = (summary) => {
-  const jsonStr = JSON.stringify(summary);
-  return crypto.createHash("sha256").update(jsonStr).digest("hex").slice(0, 16);
-};
-
-// AI review cache (persists longer)
-export const getAIReviewCache = (userId, summaryHash) => {
-  const key = `${userId}:${summaryHash}`;
-  const cached = aiReviewCache.get(key);
-
-  if (!cached) return null;
-
-  const { value, timestamp } = cached;
-  const isValid = Date.now() < timestamp + AI_CACHE_TTL;
-
-  if (!isValid) {
-    aiReviewCache.delete(key);
-    return null;
-  }
-
-  return value;
-};
-
-export const setAIReviewCache = (userId, summaryHash, review) => {
-  const key = `${userId}:${summaryHash}`;
-  aiReviewCache.set(key, {
-    value: review,
-    timestamp: Date.now(),
-  });
-};
-
-export const getCache = (key) => {
-  const cachedData = cache.get(key);
-
-  if (!cachedData) return null;
-
-  const { value, timestamp } = cachedData;
-
-  const isValid = Date.now() < timestamp + CACHE_TTL;
-
-  if (!isValid) {
-    cache.delete(key);
-    return null;
-  }
-
-  return value;
-};
-
-export const setCache = (key, value) => {
-  cache.set(key, {
-    value,
-    timestamp: Date.now(),
-  });
-};
-
-export const clearCache = (key) => {
-  cache.delete(key);
-};
-===== END FILE: server/src/utils/cache.utils.js =====
-
-===== BEGIN FILE: server/src/utils/id.utils.js =====
-import crypto from "crypto";
-
-export const generateShareId = () => {
-  return crypto.randomBytes(6).toString("hex"); // short + unique
-};
-===== END FILE: server/src/utils/id.utils.js =====
-
-===== BEGIN FILE: server/src/utils/insight.utils.js =====
-export const calculateTasteDrift = (shortArtists, longArtists) => {
-  const shortIds = new Set(shortArtists.map((a) => a.id));
-  const longIds = new Set(longArtists.map((a) => a.id));
-
-  // intersection
-  const overlap = [...shortIds].filter((id) => longIds.has(id)).length;
-
-  // union
-  const totalUnique = new Set([...shortIds, ...longIds]).size;
-
-  if (totalUnique === 0) return 0;
-
-  const similarity = (overlap / totalUnique) * 100;
-
-  return Math.round(100 - similarity); // drift %
-};
-
-export const getTopGenres = (artists) => {
-  const genreMap = {};
-
-  for (const artist of artists) {
-    for (const genre of artist.genres || []) {
-      genreMap[genre] = (genreMap[genre] || 0) + 1;
-    }
-  }
-
-  return Object.entries(genreMap)
-    .map(([genre, count]) => ({ genre, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5); // top 5 genres
-};
-===== END FILE: server/src/utils/insight.utils.js =====
-
-===== BEGIN FILE: server/src/utils/jwt.utils.js =====
-import jwt from "jsonwebtoken"
-
-const normalizeExpiry = (value, fallback) => {
-    if (typeof value !== "string") {
-        return fallback
-    }
-
-    const trimmed = value.trim()
-    return trimmed.length ? trimmed : fallback
-}
-
-const ACCESS_TOKEN_EXPIRY = normalizeExpiry(
-    process.env.ACCESS_TOKEN_EXPIRY || process.env.ACCESS_TOKEN_EXPIRES_IN,
-    "15m"
-)
-
-const REFRESH_TOKEN_EXPIRY = normalizeExpiry(
-    process.env.REFRESH_TOKEN_EXPIRY || process.env.REFRESH_TOKEN_EXPIRES_IN,
-    "1d"
-)
-
-const generateAccessToken = (payload) => {
-    return jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET, {
-        expiresIn : ACCESS_TOKEN_EXPIRY,
-    })
-}
-
-const generateRefreshToken = (payload) => {
-    return jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET, {
-        expiresIn : REFRESH_TOKEN_EXPIRY,
-    })
-}
-
-export {
-    generateAccessToken,
-    generateRefreshToken
-}
-===== END FILE: server/src/utils/jwt.utils.js =====
-
-===== BEGIN FILE: server/src/utils/summary.utils.js =====
-const TRACK_LIMIT = 20;
-const DISPLAY_LIMIT = 5;
-
-const toSafeArray = (value) => (Array.isArray(value) ? value : []);
-
-const normalizeTrack = (track) => {
-  if (!track || typeof track !== "object") return null;
-
-  const id = typeof track.id === "string" ? track.id : null;
-  if (!id) return null;
-
-  const artistFromNormalized = Array.isArray(track.artistNames)
-    ? track.artistNames.join(", ")
-    : null;
-  const artistFromRaw = Array.isArray(track.artists)
-    ? track.artists.map((a) => a?.name).filter(Boolean).join(", ")
-    : null;
-
-  return {
-    id,
-    name: track.name || "Unknown",
-    artist: artistFromNormalized || artistFromRaw || "Unknown",
-    image: track.albumImageUrl || track.album?.images?.[0]?.url || null,
-    spotifyUrl: track.spotifyUrl || track.external_urls?.spotify || null,
-  };
-};
-
-const normalizeArtist = (artist) => {
-  if (!artist || typeof artist !== "object") return null;
-
-  const id = typeof artist.id === "string" ? artist.id : null;
-  if (!id) return null;
-
-  return {
-    id,
-    name: artist.name || "Unknown",
-    image: artist.imageUrl || artist.images?.[0]?.url || null,
-    genres: toSafeArray(artist.genres).filter((genre) => typeof genre === "string"),
-  };
-};
-
-const detectVibe = (genres = []) => {
-  const g = genres.join(" ").toLowerCase();
-
-  if (g.includes("indie") || g.includes("alt")) return "Indie Soul";
-  if (g.includes("pop")) return "Main Character Energy";
-  if (g.includes("rock") || g.includes("metal")) return "Rebel Spirit";
-  if (g.includes("hip hop") || g.includes("rap") || g.includes("trap")) return "Hype and Hustle";
-  if (g.includes("electronic") || g.includes("edm") || g.includes("house")) return "Night Drive Aura";
-  if (g.includes("r&b") || g.includes("soul")) return "Smooth and Introspective";
-
-  return "Balanced Listener";
-};
-
-const getEmptySummary = () => ({
-  summary: {
-    topGenres: [],
-    topArtist: "Unknown",
-    vibe: "Balanced Listener",
-    depthScore: 0,
-  },
-  topTracks: [],
-  topArtists: [],
-});
-
-export const buildUserSummary = (topTracks = [], topArtists = []) => {
-  try {
-    const tracks = toSafeArray(topTracks)
-      .slice(0, TRACK_LIMIT)
-      .map(normalizeTrack)
-      .filter(Boolean);
-
-    const artists = toSafeArray(topArtists)
-      .slice(0, TRACK_LIMIT)
-      .map(normalizeArtist)
-      .filter(Boolean);
-
-    if (!tracks.length || !artists.length) {
-      return getEmptySummary();
-    }
-
-    const genreScore = {};
-
-    artists.forEach((artist, index) => {
-      const weight = TRACK_LIMIT - index;
-      artist.genres.forEach((genre) => {
-        genreScore[genre] = (genreScore[genre] || 0) + weight;
-      });
-    });
-
-    const topGenres = Object.entries(genreScore)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([genre]) => genre);
-
-    const uniqueGenres = Object.keys(genreScore).length;
-    const depthScore = Number((Math.min(uniqueGenres / 10, 1)).toFixed(2));
-
-    return {
-      summary: {
-        topGenres,
-        topArtist: artists[0]?.name || "Unknown",
-        vibe: detectVibe(topGenres),
-        depthScore,
-      },
-      topTracks: tracks.slice(0, DISPLAY_LIMIT),
-      topArtists: artists.slice(0, DISPLAY_LIMIT),
-    };
-  } catch {
-    return getEmptySummary();
-  }
-};
-===== END FILE: server/src/utils/summary.utils.js =====
-
-
-
 ===== server/src/controllers/ai.controller.js =====
 import { asyncHandler } from "../utils/async-handler.utils.js";
 import { generatePersonalityReview } from "../services/ai.service.js";
@@ -5270,8 +3517,8 @@ const isProduction = process.env.NODE_ENV === "production";
 
 const authCookieOptions = {
   httpOnly: true,
-  sameSite: isProduction ? "none" : "lax",
-  secure: isProduction,
+  sameSite: "none",
+  secure: true,
 };
 
 const getFrontendUrl = () => {
@@ -5384,8 +3631,6 @@ const reserveSpotifyAuthCode = async (code) => {
 };
 
 const spotifyCallback = asyncHandler(async (req, res) => {
-  console.log("SPOTIFY CALLBACK HIT");
-
   const { code, state, error } = req.query;
   const frontendURL = getFrontendUrl();
   const redirectUri = getSpotifyRedirectUri();
@@ -5413,9 +3658,6 @@ const spotifyCallback = asyncHandler(async (req, res) => {
   let tokenData;
 
   try {
-    console.log("CODE:", code);
-    console.log("REDIRECT_URI:", redirectUri);
-
     const tokenResponse = await axios.post(
       "https://accounts.spotify.com/api/token",
       new URLSearchParams({
@@ -5432,23 +3674,16 @@ const spotifyCallback = asyncHandler(async (req, res) => {
       },
     );
 
-    console.log("TOKEN RESPONSE:", tokenResponse.data);
-
-    const { access_token } = tokenResponse.data;
-
     tokenData = {
       accessToken: tokenResponse.data.access_token,
       refreshToken: tokenResponse.data.refresh_token,
       expiresIn: tokenResponse.data.expires_in,
       scope: tokenResponse.data.scope,
-      rawAccessToken: access_token,
     };
   } catch (tokenError) {
-    console.error("SPOTIFY TOKEN EXCHANGE ERROR:", {
-      message: tokenError.message,
-      status: tokenError.response?.status,
-      data: tokenError.response?.data,
-    });
+    if (!isProduction) {
+      console.log("Spotify token exchange failed", tokenError.response?.status || tokenError.message);
+    }
 
     return res.redirect(`${frontendURL}/callback?error=spotify_auth_failed`);
   }
@@ -5521,7 +3756,11 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000,
   });
 
-  const redirectUrl = `${process.env.FRONTEND_URL}/callback?token=${tokenData.rawAccessToken}`;
+  if (!isProduction) {
+    console.log("Spotify auth success");
+  }
+
+  const redirectUrl = `${frontendURL}/dashboard`;
   return res.redirect(redirectUrl);
 });
 
@@ -6019,8 +4258,8 @@ const isProduction = process.env.NODE_ENV === "production";
 
 const authCookieOptions = {
   httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? "none" : "lax",
+  secure: true,
+  sameSite: "none",
 };
 
 const issueAccessTokenFromRefresh = (req, res) => {

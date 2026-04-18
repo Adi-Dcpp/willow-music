@@ -25,8 +25,8 @@ const isProduction = process.env.NODE_ENV === "production";
 
 const authCookieOptions = {
   httpOnly: true,
-  sameSite: isProduction ? "none" : "lax",
-  secure: isProduction,
+  sameSite: "none",
+  secure: true,
 };
 
 const getFrontendUrl = () => {
@@ -139,8 +139,6 @@ const reserveSpotifyAuthCode = async (code) => {
 };
 
 const spotifyCallback = asyncHandler(async (req, res) => {
-  console.log("SPOTIFY CALLBACK HIT");
-
   const { code, state, error } = req.query;
   const frontendURL = getFrontendUrl();
   const redirectUri = getSpotifyRedirectUri();
@@ -168,9 +166,6 @@ const spotifyCallback = asyncHandler(async (req, res) => {
   let tokenData;
 
   try {
-    console.log("CODE:", code);
-    console.log("REDIRECT_URI:", redirectUri);
-
     const tokenResponse = await axios.post(
       "https://accounts.spotify.com/api/token",
       new URLSearchParams({
@@ -187,23 +182,16 @@ const spotifyCallback = asyncHandler(async (req, res) => {
       },
     );
 
-    console.log("TOKEN RESPONSE:", tokenResponse.data);
-
-    const { access_token } = tokenResponse.data;
-
     tokenData = {
       accessToken: tokenResponse.data.access_token,
       refreshToken: tokenResponse.data.refresh_token,
       expiresIn: tokenResponse.data.expires_in,
       scope: tokenResponse.data.scope,
-      rawAccessToken: access_token,
     };
   } catch (tokenError) {
-    console.error("SPOTIFY TOKEN EXCHANGE ERROR:", {
-      message: tokenError.message,
-      status: tokenError.response?.status,
-      data: tokenError.response?.data,
-    });
+    if (!isProduction) {
+      console.log("Spotify token exchange failed", tokenError.response?.status || tokenError.message);
+    }
 
     return res.redirect(`${frontendURL}/callback?error=spotify_auth_failed`);
   }
@@ -276,7 +264,11 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000,
   });
 
-  const redirectUrl = `${process.env.FRONTEND_URL}/callback?token=${tokenData.rawAccessToken}`;
+  if (!isProduction) {
+    console.log("Spotify auth success");
+  }
+
+  const redirectUrl = `${frontendURL}/dashboard`;
   return res.redirect(redirectUrl);
 });
 

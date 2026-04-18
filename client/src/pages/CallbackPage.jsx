@@ -1,7 +1,11 @@
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function CallbackPage() {
   const hasFinalized = useRef(false);
+  const navigate = useNavigate();
+  const { refreshSession, clearSession } = useAuth();
 
   useEffect(() => {
     if (hasFinalized.current) {
@@ -10,23 +14,27 @@ export default function CallbackPage() {
 
     hasFinalized.current = true;
 
-    const finalize = () => {
+    const finalize = async () => {
       const params = new URLSearchParams(window.location.search);
-      const token = params.get("token");
+      const oauthError = params.get("error");
 
-      if (token) {
-        console.log("TOKEN:", token);
-        window.localStorage.setItem("spotify_token", token);
-        window.location.replace("/dashboard");
+      if (oauthError) {
+        clearSession();
+        navigate("/", { replace: true });
         return;
       }
 
-      console.log("No token found");
-      window.location.replace("/");
+      try {
+        await refreshSession();
+        navigate("/dashboard", { replace: true });
+      } catch {
+        clearSession();
+        navigate("/", { replace: true });
+      }
     };
 
     finalize();
-  }, []);
+  }, [clearSession, navigate, refreshSession]);
 
   return <div>Logging you in...</div>;
 }
