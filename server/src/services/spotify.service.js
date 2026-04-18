@@ -32,6 +32,8 @@ const getSpotifyAuthURL = ({ state }) => {
     show_dialog: "true",
     scope: [
       "user-top-read",
+      "user-read-private",
+      "user-read-email",
     ].join(" "),
     state,
   });

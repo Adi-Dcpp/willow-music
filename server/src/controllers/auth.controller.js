@@ -14,6 +14,8 @@ import {
 
 const REQUIRED_SPOTIFY_SCOPES = [
   "user-top-read",
+  "user-read-private",
+  "user-read-email",
 ];
 
 const STATE_TTL_MS = 5 * 60 * 1000;
@@ -225,59 +227,78 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     );
   }
 
-  const spotifyProfile = await getSpotifyUserProfile({
-    accessToken: tokenData.accessToken,
-  });
+  let spotifyProfile;
 
-  const expiresAt = Date.now() + tokenData.expiresIn * 1000;
-
-  let user = await User.findOne({
-    spotifyUserId: spotifyProfile.spotifyUserId,
-  });
-
-  if (!user) {
-    user = await User.create({
-      spotifyUserId: spotifyProfile.spotifyUserId,
-      displayName: spotifyProfile.displayName,
-      profileImage: spotifyProfile.profileImage,
-      spotifyEmail: spotifyProfile.spotifyEmail,
+  try {
+    spotifyProfile = await getSpotifyUserProfile({
       accessToken: tokenData.accessToken,
-      refreshToken: tokenData.refreshToken,
-      tokenExpiresAt: expiresAt,
-      spotifyScopes,
     });
-  } else {
-    user.accessToken = tokenData.accessToken;
-    user.refreshToken = tokenData.refreshToken;
-    user.tokenExpiresAt = expiresAt;
-    user.spotifyEmail = spotifyProfile.spotifyEmail;
-    user.spotifyScopes = spotifyScopes;
+  } catch (profileError) {
+    console.error("SPOTIFY PROFILE FETCH ERROR:", {
+      message: profileError.message,
+      status: profileError.statusCode,
+    });
 
-    await user.save();
+    return res.redirect(`${frontendURL}/callback?error=spotify_profile_failed`);
   }
 
-  const accessToken = generateAccessToken({
-    userId: user._id,
-    spotifyUserId: user.spotifyUserId,
-  });
+  try {
+    const expiresAt = Date.now() + tokenData.expiresIn * 1000;
 
-  const refreshToken = generateRefreshToken({
-    userId: user._id,
-    spotifyUserId: user.spotifyUserId,
-  });
+    let user = await User.findOne({
+      spotifyUserId: spotifyProfile.spotifyUserId,
+    });
 
-  res.cookie("accessToken", accessToken, {
-    ...authCookieOptions,
-    maxAge: 15 * 60 * 1000,
-  });
+    if (!user) {
+      user = await User.create({
+        spotifyUserId: spotifyProfile.spotifyUserId,
+        displayName: spotifyProfile.displayName,
+        profileImage: spotifyProfile.profileImage,
+        spotifyEmail: spotifyProfile.spotifyEmail,
+        accessToken: tokenData.accessToken,
+        refreshToken: tokenData.refreshToken,
+        tokenExpiresAt: expiresAt,
+        spotifyScopes,
+      });
+    } else {
+      user.accessToken = tokenData.accessToken;
+      user.refreshToken = tokenData.refreshToken;
+      user.tokenExpiresAt = expiresAt;
+      user.spotifyEmail = spotifyProfile.spotifyEmail;
+      user.spotifyScopes = spotifyScopes;
 
-  res.cookie("refreshToken", refreshToken, {
-    ...authCookieOptions,
-    maxAge: 24 * 60 * 60 * 1000,
-  });
+      await user.save();
+    }
 
-  const redirectUrl = `${process.env.FRONTEND_URL}/callback?token=${tokenData.rawAccessToken}`;
-  return res.redirect(redirectUrl);
+    const accessToken = generateAccessToken({
+      userId: user._id,
+      spotifyUserId: user.spotifyUserId,
+    });
+
+    const refreshToken = generateRefreshToken({
+      userId: user._id,
+      spotifyUserId: user.spotifyUserId,
+    });
+
+    res.cookie("accessToken", accessToken, {
+      ...authCookieOptions,
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      ...authCookieOptions,
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+
+    const redirectUrl = `${frontendURL}/callback?token=${tokenData.rawAccessToken}`;
+    return res.redirect(redirectUrl);
+  } catch (userError) {
+    console.error("SPOTIFY USER UPSERT ERROR:", {
+      message: userError.message,
+    });
+
+    return res.redirect(`${frontendURL}/callback?error=user_save_failed`);
+  }
 });
 
 const logout = asyncHandler(async (req, res) => {
