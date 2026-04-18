@@ -6,18 +6,23 @@ import FooterLinks from "../components/common/FooterLinks";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 
-const getApiBaseUrl = () => {
+const getBackendUrl = () => {
+  const backendUrl = import.meta.env.VITE_BACKEND_URL;
   const apiUrl = import.meta.env.VITE_API_URL;
 
+  if (backendUrl) {
+    return backendUrl.replace(/\/+$/, "");
+  }
+
   if (apiUrl) {
-    return apiUrl;
+    return apiUrl.replace(/\/api\/?$/, "");
   }
 
   if (import.meta.env.DEV) {
-    return "http://127.0.0.1:5000/api";
+    return "http://127.0.0.1:5000";
   }
 
-  throw new Error("VITE_API_URL must be set in production");
+  throw new Error("VITE_BACKEND_URL must be set in production");
 };
 
 const features = [
@@ -41,7 +46,7 @@ export default function LoginPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const [isRedirecting, setIsRedirecting] = useState(
+  const [loading, setLoading] = useState(
     window.localStorage.getItem("willow_oauth_inflight") === "1"
   );
 
@@ -52,20 +57,20 @@ export default function LoginPage() {
   }, [isAuthenticated, navigate]);
 
   const onLogin = () => {
-    if (isRedirecting || isAuthenticated) {
+    if (loading || isAuthenticated) {
       if (isAuthenticated) {
         navigate("/dashboard", { replace: true });
       }
       return;
     }
 
-    setIsRedirecting(true);
+    setLoading(true);
     window.localStorage.setItem("willow_oauth_inflight", "1");
     window.setTimeout(() => {
-      setIsRedirecting(false);
+      setLoading(false);
       window.localStorage.removeItem("willow_oauth_inflight");
     }, REDIRECT_TIMEOUT_MS);
-    window.location.href = `${getApiBaseUrl()}/auth/spotify/login`;
+    window.location.href = `${getBackendUrl()}/api/auth/spotify/login`;
   };
 
   return (
@@ -177,10 +182,10 @@ export default function LoginPage() {
           transition={{ duration: 0.6, delay: 0.4 }}
           className="mt-10"
         >
-          <GlowButton className="w-full py-4 text-base" onClick={onLogin} disabled={isRedirecting}>
+          <GlowButton className="w-full py-4 text-base" onClick={onLogin} disabled={loading}>
             <span className="inline-flex items-center justify-center gap-2.5">
               <SpotifyLogo />
-              {isRedirecting ? "Redirecting to Spotify..." : "Continue with Spotify"}
+              {loading ? "Redirecting to Spotify..." : "Continue with Spotify"}
             </span>
           </GlowButton>
 

@@ -147,22 +147,22 @@ const spotifyCallback = asyncHandler(async (req, res) => {
 
   if (error) {
     console.error("SPOTIFY CALLBACK ERROR PARAM:", error);
-    return res.redirect(`${frontendURL}/auth/callback?error=${encodeURIComponent(String(error))}`);
+    return res.redirect(`${frontendURL}/callback?error=${encodeURIComponent(String(error))}`);
   }
 
   if (!code) {
-    return res.redirect(`${frontendURL}/auth/callback?error=missing_code`);
+    return res.redirect(`${frontendURL}/callback?error=missing_code`);
   }
 
   if (!verifyAuthState(state)) {
-    return res.redirect(`${frontendURL}/auth/callback?error=state_mismatch`);
+    return res.redirect(`${frontendURL}/callback?error=state_mismatch`);
   }
 
   const reservedCode = await reserveSpotifyAuthCode(code);
 
   if (!reservedCode) {
     console.warn("SPOTIFY CALLBACK DUPLICATE CODE BLOCKED");
-    return res.redirect(`${frontendURL}/auth/callback?error=duplicate_code`);
+    return res.redirect(`${frontendURL}/callback?error=duplicate_code`);
   }
 
   let tokenData;
@@ -189,11 +189,14 @@ const spotifyCallback = asyncHandler(async (req, res) => {
 
     console.log("TOKEN RESPONSE:", tokenResponse.data);
 
+    const { access_token } = tokenResponse.data;
+
     tokenData = {
       accessToken: tokenResponse.data.access_token,
       refreshToken: tokenResponse.data.refresh_token,
       expiresIn: tokenResponse.data.expires_in,
       scope: tokenResponse.data.scope,
+      rawAccessToken: access_token,
     };
   } catch (tokenError) {
     console.error("SPOTIFY TOKEN EXCHANGE ERROR:", {
@@ -202,7 +205,7 @@ const spotifyCallback = asyncHandler(async (req, res) => {
       data: tokenError.response?.data,
     });
 
-    return res.redirect(`${frontendURL}/auth/callback?error=spotify_auth_failed`);
+    return res.redirect(`${frontendURL}/callback?error=spotify_auth_failed`);
   }
 
   const spotifyScopes = (tokenData.scope || "")
@@ -273,7 +276,8 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000,
   });
 
-  return res.redirect(`${frontendURL}`);
+  const redirectUrl = `${process.env.FRONTEND_URL}/callback?token=${tokenData.rawAccessToken}`;
+  return res.redirect(redirectUrl);
 });
 
 const logout = asyncHandler(async (req, res) => {

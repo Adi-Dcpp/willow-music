@@ -6,7 +6,7 @@ import AuraBackground from "./components/common/AuraBackground";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/auth/ProtectedRoute";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
-import OAuthCallbackPage from "./pages/OAuthCallbackPage";
+import CallbackPage from "./pages/CallbackPage";
 import SharePage from "./pages/SharePage";
 import SnapshotPage from "./pages/SnapshotPage";
 import { useTheme } from "./context/ThemeContext";
@@ -32,7 +32,8 @@ function RouteTransition() {
       >
         <Routes location={location}>
           <Route path="/" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
-          <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+          <Route path="/callback" element={<CallbackPage />} />
+          <Route path="/auth/callback" element={<CallbackPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/snapshot" element={<ProtectedRoute><SnapshotPage /></ProtectedRoute>} />
           <Route path="/share/:id" element={<SharePage />} />
@@ -47,7 +48,7 @@ function BottomNav() {
   const { theme } = useTheme();
 
   return (
-    <nav className="fixed inset-x-0 bottom-5 z-30 mx-auto flex w-[92%] max-w-[400px] items-center justify-around rounded-full border px-2 py-2 backdrop-blur-2xl"
+    <nav className="fixed inset-x-0 bottom-5 z-30 mx-auto flex w-[92%] max-w-100 items-center justify-around rounded-full border px-2 py-2 backdrop-blur-2xl"
       style={{
         background: "rgba(0,0,0,0.5)",
         borderColor: "rgba(255,255,255,0.1)",
@@ -126,6 +127,7 @@ function App() {
   const location = useLocation();
   const showNav =
     location.pathname !== "/" &&
+    location.pathname !== "/callback" &&
     location.pathname !== "/auth/callback" &&
     !location.pathname.startsWith("/share/");
 
