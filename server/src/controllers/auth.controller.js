@@ -1,5 +1,6 @@
 import { asyncHandler } from "../utils/async-handler.utils.js";
 import { User } from "../models/user.model.js";
+import { SpotifyAuthCode } from "../models/spotify-auth-code.model.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/jwt.utils.js";
 import { ApiError } from "../utils/api-error.utils.js";
 import crypto from "crypto";
@@ -16,8 +17,9 @@ const REQUIRED_SPOTIFY_SCOPES = [
 ];
 
 const STATE_TTL_MS = 5 * 60 * 1000;
+// Keep this above typical OAuth callback latency while ensuring stale code locks expire automatically.
 const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
-const processedSpotifyAuthCodes = new Map();
+const MONGODB_DUPLICATE_KEY_ERROR = 11000;
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -120,13 +122,19 @@ const loginWithSpotify = asyncHandler(async (req, res) => {
   return res.redirect(url);
 });
 
-const cleanExpiredAuthCodes = () => {
-  const now = Date.now();
-
-  for (const [code, expiresAt] of processedSpotifyAuthCodes.entries()) {
-    if (expiresAt <= now) {
-      processedSpotifyAuthCodes.delete(code);
+const reserveSpotifyAuthCode = async (code) => {
+  try {
+    await SpotifyAuthCode.create({
+      code,
+      expiresAt: new Date(Date.now() + AUTH_CODE_TTL_MS),
+    });
+    return true;
+  } catch (error) {
+    if (error?.code === MONGODB_DUPLICATE_KEY_ERROR) {
+      return false;
     }
+
+    throw error;
   }
 };
 
@@ -146,17 +154,15 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     return res.redirect(`${frontendURL}/auth/callback?error=missing_code`);
   }
 
-  cleanExpiredAuthCodes();
-
-  if (processedSpotifyAuthCodes.has(code)) {
-    console.warn("SPOTIFY CALLBACK DUPLICATE CODE BLOCKED");
-    return res.redirect(`${frontendURL}/auth/callback?error=duplicate_code`);
+  if (!verifyAuthState(state)) {
+    return res.redirect(`${frontendURL}/auth/callback?error=state_mismatch`);
   }
 
-  processedSpotifyAuthCodes.set(code, Date.now() + AUTH_CODE_TTL_MS);
+  const reservedCode = await reserveSpotifyAuthCode(code);
 
-  if (!verifyAuthState(state)) {
-    throw new ApiError(400, "State mismatch");
+  if (!reservedCode) {
+    console.warn("SPOTIFY CALLBACK DUPLICATE CODE BLOCKED");
+    return res.redirect(`${frontendURL}/auth/callback?error=duplicate_code`);
   }
 
   let tokenData;

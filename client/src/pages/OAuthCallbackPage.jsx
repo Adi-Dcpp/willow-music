@@ -30,6 +30,8 @@ export default function OAuthCallbackPage() {
     const missingScopes = params.get("missing");
 
     const finalize = async () => {
+      hasFinalized.current = true;
+
       try {
         if (oauthError) {
           if (oauthError === "missing_scopes" && missingScopes) {
@@ -40,7 +42,6 @@ export default function OAuthCallbackPage() {
         }
 
         await refreshSession();
-        hasFinalized.current = true;
         navigate("/dashboard", { replace: true });
       } catch (err) {
         clearSession();

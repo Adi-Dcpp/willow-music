@@ -25,6 +25,7 @@ const features = [
   { icon: "📸", label: "Shareable Aura" },
   { icon: "🎵", label: "Top Music Signals" },
 ];
+const REDIRECT_TIMEOUT_MS = 8000;
 
 const SpotifyLogo = () => (
   <svg viewBox="0 0 168 168" className="h-5 w-5 shrink-0" fill="currentColor">
@@ -43,6 +44,9 @@ export default function LoginPage() {
     }
 
     setIsRedirecting(true);
+    window.setTimeout(() => {
+      setIsRedirecting(false);
+    }, REDIRECT_TIMEOUT_MS);
     window.location.href = `${getApiBaseUrl()}/auth/spotify/login`;
   };
 
