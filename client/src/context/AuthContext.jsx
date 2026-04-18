@@ -8,6 +8,7 @@ export function AuthProvider({ children }) {
   const [isBooting, setIsBooting] = useState(true);
 
   const clearSession = useCallback(() => {
+    window.localStorage.removeItem("willow_access_token");
     setUser(null);
   }, []);
 

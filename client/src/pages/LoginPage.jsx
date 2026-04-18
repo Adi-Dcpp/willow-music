@@ -1,9 +1,10 @@
 import { motion } from "framer-motion";
-import { useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import GlowButton from "../components/common/GlowButton";
 import FooterLinks from "../components/common/FooterLinks";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 const getApiBaseUrl = () => {
   const apiUrl = import.meta.env.VITE_API_URL;
@@ -38,16 +39,31 @@ const SpotifyLogo = () => (
 export default function LoginPage() {
   const { theme } = useTheme();
   const location = useLocation();
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const [isRedirecting, setIsRedirecting] = useState(
+    window.localStorage.getItem("willow_oauth_inflight") === "1"
+  );
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const onLogin = () => {
-    if (isRedirecting) {
+    if (isRedirecting || isAuthenticated) {
+      if (isAuthenticated) {
+        navigate("/dashboard", { replace: true });
+      }
       return;
     }
 
     setIsRedirecting(true);
+    window.localStorage.setItem("willow_oauth_inflight", "1");
     window.setTimeout(() => {
       setIsRedirecting(false);
+      window.localStorage.removeItem("willow_oauth_inflight");
     }, REDIRECT_TIMEOUT_MS);
     window.location.href = `${getApiBaseUrl()}/auth/spotify/login`;
   };

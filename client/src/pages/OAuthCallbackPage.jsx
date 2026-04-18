@@ -26,6 +26,7 @@ export default function OAuthCallbackPage() {
     processedQuery.current = query;
 
     const params = new URLSearchParams(query);
+    const accessToken = params.get("access_token") || params.get("token");
     const oauthError = params.get("error");
     const missingScopes = params.get("missing");
     const isDuplicateCode = oauthError === "duplicate_code";
@@ -33,8 +34,13 @@ export default function OAuthCallbackPage() {
     const finalize = async () => {
       hasFinalized.current = true;
       console.log("OAuth callback processed once");
+      window.localStorage.removeItem("willow_oauth_inflight");
 
       try {
+        if (accessToken) {
+          window.localStorage.setItem("willow_access_token", accessToken);
+        }
+
         // If session already exists, skip all callback error handling and proceed.
         const user = await refreshSession();
         if (user) {
