@@ -28,12 +28,21 @@ export default function OAuthCallbackPage() {
     const params = new URLSearchParams(query);
     const oauthError = params.get("error");
     const missingScopes = params.get("missing");
+    const isDuplicateCode = oauthError === "duplicate_code";
 
     const finalize = async () => {
       hasFinalized.current = true;
+      console.log("OAuth callback processed once");
 
       try {
-        if (oauthError) {
+        // If session already exists, skip all callback error handling and proceed.
+        const user = await refreshSession();
+        if (user) {
+          navigate("/dashboard", { replace: true });
+          return;
+        }
+
+        if (oauthError && !isDuplicateCode) {
           if (oauthError === "missing_scopes" && missingScopes) {
             throw new Error(`Missing Spotify scopes: ${decodeURIComponent(missingScopes)}`);
           }
@@ -41,9 +50,18 @@ export default function OAuthCallbackPage() {
           throw new Error("Spotify authorization failed. Please try again.");
         }
 
-        await refreshSession();
+        if (isDuplicateCode) {
+          navigate("/dashboard", { replace: true });
+          return;
+        }
+
         navigate("/dashboard", { replace: true });
       } catch (err) {
+        if (isDuplicateCode) {
+          navigate("/dashboard", { replace: true });
+          return;
+        }
+
         clearSession();
         setError(err?.message || "Could not complete login.");
       } finally {
@@ -55,7 +73,7 @@ export default function OAuthCallbackPage() {
   }, [clearSession, navigate, refreshSession]);
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[420px] flex-col justify-center px-4">
+    <div className="mx-auto flex min-h-screen w-full max-w-105 flex-col justify-center px-4">
       <motion.div
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
