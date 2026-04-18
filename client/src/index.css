@@ -16,8 +16,32 @@ body {
   background: #06090b;
   color: #f8fafc;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* Gradient text utility */
+.text-gradient {
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Noise overlay for cinematic depth */
+.noise-overlay::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 128px 128px;
+}
+
+/* Shimmer skeleton */
 .shimmer {
   position: relative;
   overflow: hidden;
@@ -31,14 +55,70 @@ body {
   background: linear-gradient(
     110deg,
     transparent 25%,
-    rgba(255, 255, 255, 0.16) 50%,
+    rgba(255, 255, 255, 0.12) 50%,
     transparent 75%
   );
-  animation: shimmer 1.4s infinite;
+  animation: shimmer 1.6s infinite;
 }
 
 @keyframes shimmer {
   to {
     transform: translateX(100%);
   }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  height: 3px;
+  width: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Hide scrollbar for track rows */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Glass surface utility */
+.glass {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Inner highlight — top edge glow on cards */
+.glass-highlight {
+  position: relative;
+}
+.glass-highlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    transparent 50%
+  );
+  pointer-events: none;
+}
+
+/* Rank badge */
+.rank-badge {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
