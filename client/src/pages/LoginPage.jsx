@@ -36,7 +36,7 @@ export default function LoginPage() {
     window.setTimeout(() => {
       setLoading(false);
     }, REDIRECT_TIMEOUT_MS);
-    window.location.href = `${API_BASE_URL}/api/auth/spotify/login`;
+    window.location.href = `${API_BASE_URL}/auth/spotify/login`;
   };
 
   return (

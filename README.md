@@ -78,6 +78,7 @@ npm run dev
 - Root directory: `client`
 - Build command: `npm run build`
 - Output directory: `dist`
+- Keep `vercel.json` in repository root (`/vercel.json`) so SPA rewrites are applied
 - Set `VITE_API_BASE_URL` to the Render backend URL (without `/api`)
 
 ### Spotify OAuth
