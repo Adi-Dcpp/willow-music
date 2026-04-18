@@ -5,6 +5,7 @@ const aiReviewCache = new Map();
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 min
 const AI_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_AI_CACHE_ITEMS = 5000;
 
 // Hash summary object for cache key
 export const hashSummary = (summary) => {
@@ -32,6 +33,14 @@ export const getAIReviewCache = (userId, summaryHash) => {
 
 export const setAIReviewCache = (userId, summaryHash, review) => {
   const key = `${userId}:${summaryHash}`;
+
+  if (aiReviewCache.size >= MAX_AI_CACHE_ITEMS && !aiReviewCache.has(key)) {
+    const firstKey = aiReviewCache.keys().next().value;
+    if (firstKey) {
+      aiReviewCache.delete(firstKey);
+    }
+  }
+
   aiReviewCache.set(key, {
     value: review,
     timestamp: Date.now(),

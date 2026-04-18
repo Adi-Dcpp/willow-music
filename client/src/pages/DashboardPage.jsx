@@ -11,7 +11,6 @@ import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 
-// ── Vibe derivation ─────────────────────────────────────────────────────────
 const VIBE_MAP = [
   { match: ["indie", "alternative", "dream pop", "shoegaze"], label: "Indie Dreamer" },
   { match: ["hip hop", "rap", "trap", "drill", "boom bap"], label: "Street Poet" },
@@ -25,38 +24,46 @@ const VIBE_MAP = [
   { match: ["classical", "orchestral", "opera", "chamber"], label: "Classical Phantom" },
 ];
 
-/**
- * Maps an array of top genres to a named vibe archetype.
- * Iterates through VIBE_MAP entries in priority order and returns
- * the label of the first matching entry, or "Sonic Wanderer" as fallback.
- *
- * @param {Array<string|{genre:string}>} topGenres - genre strings or genre objects from the API
- * @returns {string} human-readable vibe archetype label
- */
-function deriveVibe(topGenres = []) {
-  const str = topGenres
+function deriveVibe(topGenres = [], metrics = {}) {
+  const genres = topGenres
     .map((g) => (typeof g === "string" ? g : g.genre))
-    .join(" ")
-    .toLowerCase();
+    .filter(Boolean)
+    .map((genre) => genre.toLowerCase());
+
+  const joined = genres.join(" ");
+  const uniqueGenres = new Set(genres).size;
+  const genreCount = genres.length;
+  const dominantShare = metrics.dominantShare ?? (genreCount ? 1 / Math.max(1, uniqueGenres) : 0);
+  const artistSpread = metrics.artistSpread ?? 0;
+  const depthScore = metrics.depthScore ?? 0;
+
   for (const entry of VIBE_MAP) {
-    if (entry.match.some((k) => str.includes(k))) return entry.label;
+    if (entry.match.some((k) => joined.includes(k))) return entry.label;
   }
-  return "Sonic Wanderer";
+
+  if (uniqueGenres >= 5 && artistSpread >= 0.7 && dominantShare < 0.35) return "Sonic Wanderer";
+  if (dominantShare >= 0.45 && uniqueGenres <= 2) return "Deep Cut Devotee";
+  if (artistSpread >= 0.6) return "Genre Drifter";
+  if (depthScore >= 0.7) return "Layered Listener";
+
+  return topGenres.length ? "Balanced Listener" : "Sonic Wanderer";
 }
 
 function TrackSkeleton() {
   return (
-    <div className="min-w-[160px] shrink-0 snap-start">
+    <div className="overflow-hidden rounded-[26px] border border-white/10 bg-white/5">
       <div className="h-40 rounded-2xl bg-white/8 shimmer" />
-      <div className="mt-2 h-3.5 w-3/4 rounded-full bg-white/8 shimmer" />
-      <div className="mt-1.5 h-3 w-1/2 rounded-full bg-white/8 shimmer" />
+      <div className="p-3">
+        <div className="h-3.5 w-3/4 rounded-full bg-white/8 shimmer" />
+        <div className="mt-1.5 h-3 w-1/2 rounded-full bg-white/8 shimmer" />
+      </div>
     </div>
   );
 }
 
 function ArtistSkeleton() {
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="flex flex-col items-center gap-2 rounded-3xl border border-white/10 bg-white/5 p-3">
       <div className="h-20 w-20 rounded-full bg-white/8 shimmer" />
       <div className="h-3 w-14 rounded-full bg-white/8 shimmer" />
     </div>
@@ -79,17 +86,113 @@ const ranges = [
   { id: "long_term", label: "All Time", short: "ALL" },
 ];
 
+const EMPTY_DASHBOARD_PAYLOAD = {
+  topTracks: [],
+  topArtists: [],
+  summary: {
+    topGenres: [],
+    topArtist: "",
+    vibe: "",
+    depthScore: 0,
+  },
+  insights: {
+    tasteDriftScore: 0,
+    tasteDriftMessage: "",
+    topGenres: [],
+  },
+};
+
+const toNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const clampScore = (value) => Math.max(0, Math.min(100, Math.round(value)));
+
+const getTasteDriftMessage = (score) => {
+  if (score >= 85) return "Boundary breaker: your rotation is in constant discovery mode.";
+  if (score >= 65) return "Curious explorer: you regularly expand beyond your usual lane.";
+  if (score >= 45) return "Balanced explorer: you mix comfort tracks with fresh finds.";
+  if (score >= 25) return "Steady core: your taste is consistent with occasional detours.";
+  return "Signature locked: you know your sound and stay true to it.";
+};
+
+const getSpotifyTrackUrl = (track) => {
+  if (track?.spotifyUrl) return track.spotifyUrl;
+  if (track?.external_urls?.spotify) return track.external_urls.spotify;
+  if (track?.id) return `https://open.spotify.com/track/${track.id}`;
+  return null;
+};
+
+const normalizeDashboardPayload = (apiPayload) => {
+  const source = apiPayload?.data || apiPayload || {};
+  const summary = source.summary || {};
+
+  const topTracks = Array.isArray(source.topTracks)
+    ? source.topTracks.map((track) => {
+        const artistNames = Array.isArray(track?.artistNames)
+          ? track.artistNames
+          : typeof track?.artist === "string"
+          ? track.artist.split(",").map((s) => s.trim()).filter(Boolean)
+          : [];
+
+        return {
+          ...track,
+          artistNames,
+          albumImageUrl: track?.albumImageUrl || track?.image || null,
+        };
+      })
+    : [];
+
+  const topArtists = Array.isArray(source.topArtists)
+    ? source.topArtists.map((artist) => ({
+        ...artist,
+        imageUrl: artist?.imageUrl || artist?.image || null,
+      }))
+    : [];
+
+  const summaryTopGenres = Array.isArray(summary.topGenres) ? summary.topGenres : [];
+  const insightTopGenres = Array.isArray(source.insights?.topGenres) ? source.insights.topGenres : [];
+
+  const normalizedGenres = insightTopGenres.length
+    ? insightTopGenres
+    : summaryTopGenres.map((genre) => ({ genre, count: 1 }));
+
+  const legacyScore = toNumber(source.insights?.tasteDriftScore, NaN);
+  const summaryDepth = toNumber(summary.depthScore, 0);
+  const depthAsPercent = summaryDepth <= 1 ? summaryDepth * 100 : summaryDepth;
+  const tasteDriftScore = Number.isFinite(legacyScore)
+    ? clampScore(legacyScore)
+    : clampScore(depthAsPercent);
+  const tasteDriftMessage = source.insights?.tasteDriftMessage || getTasteDriftMessage(tasteDriftScore);
+
+  return {
+    ...EMPTY_DASHBOARD_PAYLOAD,
+    ...source,
+    topTracks,
+    topArtists,
+    summary: {
+      ...EMPTY_DASHBOARD_PAYLOAD.summary,
+      ...summary,
+      topGenres: summaryTopGenres,
+    },
+    insights: {
+      ...EMPTY_DASHBOARD_PAYLOAD.insights,
+      ...(source.insights || {}),
+      tasteDriftScore,
+      tasteDriftMessage,
+      topGenres: normalizedGenres,
+    },
+  };
+};
+
 export default function DashboardPage() {
   const { user, refreshSession } = useAuth();
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [timeRange, setTimeRange] = useState("medium_term");
-  const [payload, setPayload] = useState({
-    topTracks: [],
-    topArtists: [],
-    insights: { tasteDriftScore: 0, topGenres: [] },
-  });
+  const [payload, setPayload] = useState(EMPTY_DASHBOARD_PAYLOAD);
   const [aiReview, setAIReview] = useState("");
   const [aiLoading, setAILoading] = useState(false);
   const aiSummaryRef = useRef(null);
@@ -122,20 +225,24 @@ export default function DashboardPage() {
         },
       });
 
-      const data = response.data?.data || {
-        topTracks: [],
-        topArtists: [],
-        insights: { tasteDriftScore: 0, topGenres: [] },
-      };
+      const data = normalizeDashboardPayload(response.data);
 
       setPayload(data);
 
       // Fetch AI review based on this data (once per session per timeRange)
       const rawGenres = data.insights?.topGenres || [];
-      const topGenres = rawGenres.map((g) => (typeof g === "string" ? g : g.genre));
-      const topArtist = data.topArtists?.[0]?.name || "";
+      const topGenres = data.summary?.topGenres?.length
+        ? data.summary.topGenres
+        : rawGenres.map((g) => (typeof g === "string" ? g : g.genre)).filter(Boolean);
+      const topArtist = data.summary?.topArtist || data.topArtists?.[0]?.name || "";
       const tasteDriftScore = data.insights?.tasteDriftScore ?? 0;
-      const vibeLabel = deriveVibe(rawGenres);
+      const vibeLabel =
+        data.summary?.vibe ||
+        deriveVibe(rawGenres, {
+          dominantShare: 1 / Math.max(1, rawGenres.length || 1),
+          artistSpread: data.topArtists?.length ? new Set(data.topArtists.map((artist) => artist.id)).size / data.topArtists.length : 0,
+          depthScore: data.summary?.depthScore || 0,
+        });
       const summary = { topGenres, topArtist, vibe: vibeLabel, depthScore: tasteDriftScore };
       const summaryKey = JSON.stringify(summary);
 
@@ -158,12 +265,17 @@ export default function DashboardPage() {
   const topTracks = payload?.topTracks || [];
   const topArtists = payload?.topArtists || [];
   const tasteDriftScore = payload?.insights?.tasteDriftScore ?? 0;
+  const tasteDriftMessage = payload?.insights?.tasteDriftMessage || getTasteDriftMessage(tasteDriftScore);
   const topGenres = payload?.insights?.topGenres || [];
   const activeRange = ranges.find((r) => r.id === timeRange);
-  const vibe = deriveVibe(topGenres);
+  const vibe = payload?.summary?.vibe || deriveVibe(topGenres, {
+    dominantShare: topGenres.length ? 1 / Math.max(1, topGenres.length) : 0,
+    artistSpread: topArtists.length ? new Set(topArtists.map((artist) => artist.id)).size / topArtists.length : 0,
+    depthScore: payload?.summary?.depthScore || 0,
+  });
 
   return (
-    <div className="mx-auto w-full max-w-lg px-4 pb-32 pt-8">
+    <div className="mx-auto w-full max-w-6xl px-4 pb-32 pt-8 lg:px-8">
 
       {/* ── Profile Hero ── */}
       <AnimatedSection>
@@ -251,34 +363,41 @@ export default function DashboardPage() {
               Your Sound
             </p>
             <h3 className="text-lg font-bold text-white">Top Tracks</h3>
+            <p className="text-xs" style={{ color: theme.palette.muted }}>
+              Showing {Math.min(topTracks.length, 20)} tracks from your era
+            </p>
           </div>
           <EqualizerBars />
         </div>
 
         {loading ? (
-          <div className="flex gap-3 overflow-hidden pb-1">
-            {Array.from({ length: 4 }).map((_, i) => <TrackSkeleton key={i} />)}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {Array.from({ length: 10 }).map((_, i) => <TrackSkeleton key={i} />)}
           </div>
         ) : topTracks.length === 0 ? (
           <EmptyState title="No top tracks yet" message="Play more music on Spotify and come back." />
         ) : (
-          <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto pb-2">
-            {topTracks.map((track, index) => (
-              <motion.div
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {topTracks.slice(0, 20).map((track, index) => (
+              <motion.button
                 key={track.id}
-                initial={{ opacity: 0, x: 32 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
-                className="min-w-[160px] max-w-[160px] shrink-0 snap-start"
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.03, ease: [0.22, 1, 0.36, 1] }}
+                onClick={() => {
+                  const spotifyUrl = getSpotifyTrackUrl(track);
+                  if (!spotifyUrl) return;
+                  window.open(spotifyUrl, "_blank", "noopener,noreferrer");
+                }}
+                className="text-left"
               >
-                <GlassCard className="overflow-hidden p-0" hover>
+                <GlassCard className="h-full overflow-hidden p-0" hover>
                   <div className="relative">
                     <img
                       src={track.albumImageUrl || "https://placehold.co/300x300?text=Track"}
                       alt={track.name}
-                      className="h-40 w-full object-cover"
+                      className="h-36 w-full object-cover sm:h-40"
                     />
-                    {/* Rank badge */}
                     <span
                       className="rank-badge absolute left-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
                       style={{
@@ -288,8 +407,7 @@ export default function DashboardPage() {
                     >
                       {index + 1}
                     </span>
-                    {/* Gradient overlay */}
-                    <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-black/70 to-transparent" />
                   </div>
                   <div className="p-3">
                     <p className="truncate text-xs font-semibold text-white">{track.name}</p>
@@ -298,7 +416,7 @@ export default function DashboardPage() {
                     </p>
                   </div>
                 </GlassCard>
-              </motion.div>
+              </motion.button>
             ))}
           </div>
         )}
@@ -311,11 +429,14 @@ export default function DashboardPage() {
             Your Influences
           </p>
           <h3 className="text-lg font-bold text-white">Top Artists</h3>
+          <p className="text-xs" style={{ color: theme.palette.muted }}>
+            Showing {Math.min(topArtists.length, 10)} artists shaping your sound
+          </p>
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-4 gap-3">
-            {Array.from({ length: 8 }).map((_, i) => <ArtistSkeleton key={i} />)}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+            {Array.from({ length: 10 }).map((_, i) => <ArtistSkeleton key={i} />)}
           </div>
         ) : topArtists.length === 0 ? (
           <EmptyState title="No top artists yet" message="Your favorite artists will appear here soon." />
@@ -336,7 +457,7 @@ export default function DashboardPage() {
                       alt={topArtists[0].name}
                       className="h-full w-full object-cover object-top"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                    <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
                     <div className="absolute bottom-4 left-4">
                       <span
                         className="mb-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
@@ -352,8 +473,8 @@ export default function DashboardPage() {
             )}
 
             {/* Remaining artists grid */}
-            <div className="grid grid-cols-4 gap-3">
-              {topArtists.slice(1).map((artist, index) => (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {topArtists.slice(1, 10).map((artist, index) => (
                 <motion.div
                   key={artist.id}
                   initial={{ opacity: 0, y: 16 }}
@@ -370,7 +491,7 @@ export default function DashboardPage() {
                     <img
                       src={artist.imageUrl || artist.image || "https://placehold.co/160x160?text=A"}
                       alt={artist.name}
-                      className="h-16 w-16 rounded-full object-cover border"
+                      className="h-20 w-20 rounded-full border object-cover sm:h-16 sm:w-16"
                       style={{ borderColor: theme.palette.border }}
                     />
                     <span
@@ -380,7 +501,7 @@ export default function DashboardPage() {
                       {index + 2}
                     </span>
                   </div>
-                  <p className="w-full truncate text-center text-[10px] font-medium text-white/80">
+                  <p className="w-full truncate text-center text-[10px] font-medium text-white/80 sm:text-[11px]">
                     {artist.name}
                   </p>
                 </motion.div>
@@ -406,11 +527,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm font-semibold text-white">Taste Drift Score</p>
               <p className="mt-1 text-xs leading-relaxed" style={{ color: theme.palette.muted }}>
-                {tasteDriftScore >= 70
-                  ? "Your taste is evolving fast — you're always discovering."
-                  : tasteDriftScore >= 40
-                  ? "You balance new finds with beloved classics."
-                  : "You've found your signature sound and own it."}
+                {tasteDriftMessage}
               </p>
             </div>
           </div>

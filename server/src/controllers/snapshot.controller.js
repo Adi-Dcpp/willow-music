@@ -10,6 +10,7 @@ import {
 import { getValidSpotifyAccessToken } from "./spotify.controller.js";
 import { User } from "../models/user.model.js";
 import { buildUserSummary } from "../utils/summary.utils.js";
+import { generatePersonalityReview } from "../services/ai.service.js";
 
 const createSnapshot = asyncHandler(async (req, res) => {
   const { userId, spotifyUserId } = req.user;
@@ -17,7 +18,7 @@ const createSnapshot = asyncHandler(async (req, res) => {
   const { timeRange = "medium_term" } = req.body;
 
   const user = await User.findById(userId).select(
-    "accessToken refreshToken tokenExpiresAt",
+    "displayName accessToken refreshToken tokenExpiresAt",
   );
 
   if (!user) throw new ApiError(404, "User not found");
@@ -30,17 +31,33 @@ const createSnapshot = asyncHandler(async (req, res) => {
   ]);
 
   // Build summary for lighter, AI-ready snapshot
-  const summaryResult = buildUserSummary(topTracks, topArtists);
+  const summaryResult = buildUserSummary(topTracks, topArtists, {
+    trackDisplayCount: 10,
+    artistDisplayCount: 10,
+  });
+
+  let aiReview = "Willow sees your taste as personal, polished, and easy to recognize.";
+
+  try {
+    aiReview = await generatePersonalityReview(summaryResult.summary, user.displayName || "listener");
+  } catch {
+    aiReview = user.displayName
+      ? `${user.displayName}, Willow hears a sound that feels intentional, emotional, and uniquely yours.`
+      : "Willow hears a sound that feels intentional, emotional, and uniquely yours.";
+  }
 
   const shareId = generateShareId();
 
   const snapshot = await Snapshot.create({
     shareId,
     spotifyUserId,
+    displayName: user.displayName || "",
     timeRange,
     topTracks: summaryResult.topTracks,
     topArtists: summaryResult.topArtists,
     summary: summaryResult.summary,
+    insights: summaryResult.insights,
+    aiReview,
   });
 
   return res.status(201).json(

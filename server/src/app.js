@@ -13,6 +13,10 @@ import { rateLimiter } from "./middleware/rateLimiter.middlewares.js";
 
 const app = express();
 
+if (process.env.TRUST_PROXY === "1" || process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 const allowedOrigins = new Set([
   process.env.FRONTEND_URL,
   "http://localhost:5173",
@@ -36,6 +40,10 @@ app.use(rateLimiter);
 
 app.get("/", (req, res) => {
   res.send("Willow API is alive 🌿");
+});
+
+app.get("/healthz", (req, res) => {
+  res.status(200).json({ ok: true, service: "willow-api" });
 });
 
 app.use("/api/auth", authRoutes);

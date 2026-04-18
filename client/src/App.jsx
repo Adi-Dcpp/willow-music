@@ -1,20 +1,21 @@
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { LayoutDashboard, Camera, ListMusic } from "lucide-react";
+import { LayoutDashboard, Camera, LogOut } from "lucide-react";
 import AuraBackground from "./components/common/AuraBackground";
 import { ProtectedRoute, PublicOnlyRoute } from "./components/auth/ProtectedRoute";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
-import PlaylistPage from "./pages/PlaylistPage";
 import SharePage from "./pages/SharePage";
 import SnapshotPage from "./pages/SnapshotPage";
 import { useTheme } from "./context/ThemeContext";
+import { useAuth } from "./context/AuthContext";
+import { api } from "./api/client";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { to: "/snapshot", label: "Snapshot", Icon: Camera },
-  { to: "/playlist", label: "Playlist", Icon: ListMusic },
 ];
 
 function RouteTransition() {
@@ -35,7 +36,6 @@ function RouteTransition() {
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/snapshot" element={<ProtectedRoute><SnapshotPage /></ProtectedRoute>} />
           <Route path="/share/:id" element={<SharePage />} />
-          <Route path="/playlist" element={<ProtectedRoute><PlaylistPage /></ProtectedRoute>} />
         </Routes>
       </motion.div>
     </AnimatePresence>
@@ -87,6 +87,41 @@ function BottomNav() {
   );
 }
 
+function LogoutButton() {
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const navigate = useNavigate();
+  const { clearSession } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await api.post("/auth/logout");
+    } catch {
+      // Best effort; continue clearing local session state.
+    } finally {
+      ["willow-theme", "willow-snapshot-themes"].forEach((key) => {
+        window.localStorage.removeItem(key);
+      });
+      clearSession();
+      setIsLoggingOut(false);
+      navigate("/", { replace: true });
+    }
+  };
+
+  return (
+    <button
+      onClick={handleLogout}
+      disabled={isLoggingOut}
+      className="fixed bottom-24 right-4 z-30 inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/45 px-3 py-2 text-[11px] font-semibold text-white/80 backdrop-blur-xl transition hover:bg-black/55 disabled:cursor-not-allowed disabled:opacity-60"
+      aria-label="Log out"
+      title="Log out"
+    >
+      <LogOut size={14} />
+      {isLoggingOut ? "Signing out..." : "Logout"}
+    </button>
+  );
+}
+
 function App() {
   const location = useLocation();
   const showNav =
@@ -98,6 +133,7 @@ function App() {
     <div className="min-h-screen">
       <AuraBackground />
       <RouteTransition />
+      {showNav && <LogoutButton />}
       {showNav && <BottomNav />}
     </div>
   );

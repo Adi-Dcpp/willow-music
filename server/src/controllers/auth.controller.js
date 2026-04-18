@@ -10,35 +10,89 @@ import {
   getSpotifyUserProfile,
 } from "../services/spotify.service.js";
 
-const authStateStore = new Map();
-const AUTH_STATE_TTL_MS = 5 * 60 * 1000;
 const REQUIRED_SPOTIFY_SCOPES = [
   "user-top-read",
 ];
 
-const setAuthState = (state) => {
-  authStateStore.set(state, Date.now() + AUTH_STATE_TTL_MS);
+const STATE_TTL_MS = 5 * 60 * 1000;
+
+const getStateSecret = () =>
+  process.env.SPOTIFY_CLIENT_SECRET || process.env.ACCESS_TOKEN_SECRET;
+
+const toBase64Url = (value) =>
+  Buffer.from(value)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+const fromBase64Url = (value) => {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padLength = (4 - (base64.length % 4)) % 4;
+  return Buffer.from(base64 + "=".repeat(padLength), "base64").toString("utf8");
 };
 
-const consumeAuthState = (state) => {
-  const expiresAt = authStateStore.get(state);
-  authStateStore.delete(state);
+const signState = (payload) => {
+  const secret = getStateSecret();
 
-  return Boolean(expiresAt && expiresAt > Date.now());
+  if (!secret) {
+    throw new ApiError(500, "State secret missing");
+  }
+
+  return crypto.createHmac("sha256", secret).update(payload).digest("hex");
+};
+
+const createAuthState = () => {
+  const payload = JSON.stringify({
+    nonce: crypto.randomBytes(16).toString("hex"),
+    ts: Date.now(),
+  });
+
+  const encodedPayload = toBase64Url(payload);
+  const signature = signState(encodedPayload);
+
+  return `${encodedPayload}.${signature}`;
+};
+
+const verifyAuthState = (state) => {
+  if (!state || typeof state !== "string") {
+    return false;
+  }
+
+  const [encodedPayload, providedSignature] = state.split(".");
+
+  if (!encodedPayload || !providedSignature) {
+    return false;
+  }
+
+  const expectedSignature = signState(encodedPayload);
+  const providedBuffer = Buffer.from(providedSignature, "hex");
+  const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+  if (providedBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+
+  if (!crypto.timingSafeEqual(providedBuffer, expectedBuffer)) {
+    return false;
+  }
+
+  try {
+    const payload = JSON.parse(fromBase64Url(encodedPayload));
+    if (!payload?.ts) {
+      return false;
+    }
+
+    return Date.now() - payload.ts <= STATE_TTL_MS;
+  } catch {
+    return false;
+  }
 };
 
 const loginWithSpotify = asyncHandler(async (req, res) => {
-  const state = crypto.randomBytes(16).toString("hex");
+  const state = createAuthState();
 
   const url = getSpotifyAuthURL({ state });
-  setAuthState(state);
-
-  res.cookie("spotify_auth_state", state, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 5 * 60 * 1000,
-  });
 
   return res.redirect(url);
 });
@@ -55,15 +109,9 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Authorization code missing");
   }
 
-  const storedState = req.cookies?.spotify_auth_state;
-  const matchedCookieState = Boolean(state && storedState && state === storedState);
-  const matchedStoredState = Boolean(state && consumeAuthState(state));
-
-  if (!matchedCookieState && !matchedStoredState) {
+  if (!verifyAuthState(state)) {
     throw new ApiError(400, "State mismatch");
   }
-
-  res.clearCookie("spotify_auth_state");
 
   const tokenData = await exchangeCodeForToken({ code });
   const spotifyScopes = (tokenData.scope || "")
@@ -114,7 +162,7 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     await user.save();
   }
 
-  const jwtToken = generateAccessToken({
+  const accessToken = generateAccessToken({
     userId: user._id,
     spotifyUserId: user.spotifyUserId,
   });
@@ -124,7 +172,7 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     spotifyUserId: user.spotifyUserId,
   });
 
-  res.cookie("accessToken", jwtToken, {
+  res.cookie("accessToken", accessToken, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -138,7 +186,7 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000,
   });
 
-  return res.redirect(`${frontendURL}/auth/callback?token=${encodeURIComponent(jwtToken)}`);
+  return res.redirect(`${frontendURL}/auth/callback`);
 });
 
 const logout = asyncHandler(async (req, res) => {

@@ -3,24 +3,13 @@ import { api } from "../api/client";
 
 const AuthContext = createContext(null);
 
-const TOKEN_KEY = "willow-access-token";
-
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isBooting, setIsBooting] = useState(true);
 
-  const setToken = useCallback((token) => {
-    if (!token) {
-      window.localStorage.removeItem(TOKEN_KEY);
-      return;
-    }
-    window.localStorage.setItem(TOKEN_KEY, token);
-  }, []);
-
   const clearSession = useCallback(() => {
     setUser(null);
-    setToken(null);
-  }, [setToken]);
+  }, []);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -66,9 +55,8 @@ export function AuthProvider({ children }) {
       isBooting,
       refreshSession,
       clearSession,
-      setToken,
     }),
-    [user, isBooting, refreshSession, clearSession, setToken]
+    [user, isBooting, refreshSession, clearSession]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -80,8 +68,4 @@ export function useAuth() {
     throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
-}
-
-export function getStoredToken() {
-  return window.localStorage.getItem(TOKEN_KEY);
 }

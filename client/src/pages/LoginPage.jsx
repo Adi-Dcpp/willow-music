@@ -8,7 +8,7 @@ const features = [
   { icon: "🎭", label: "Music Identity" },
   { icon: "🧠", label: "Taste Insights" },
   { icon: "📸", label: "Shareable Aura" },
-  { icon: "🎵", label: "Smart Playlists" },
+  { icon: "🎵", label: "Top Music Signals" },
 ];
 
 const SpotifyLogo = () => (

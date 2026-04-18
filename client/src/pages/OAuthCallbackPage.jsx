@@ -8,7 +8,7 @@ import { useAuth } from "../context/AuthContext";
 
 export default function OAuthCallbackPage() {
   const navigate = useNavigate();
-  const { setToken, refreshSession, clearSession } = useAuth();
+  const { refreshSession, clearSession } = useAuth();
   const [error, setError] = useState("");
   const processedQuery = useRef(null);
 
@@ -21,34 +21,31 @@ export default function OAuthCallbackPage() {
     processedQuery.current = query;
 
     const params = new URLSearchParams(query);
-    const token = params.get("token");
     const oauthError = params.get("error");
+    const missingScopes = params.get("missing");
 
     const finalize = async () => {
       try {
         if (oauthError) {
+          if (oauthError === "missing_scopes" && missingScopes) {
+            throw new Error(`Missing Spotify scopes: ${decodeURIComponent(missingScopes)}`);
+          }
+
           throw new Error("Spotify authorization failed. Please try again.");
         }
 
-        if (!token) {
-          throw new Error("Missing login token. Please sign in again.");
-        }
-
-        setToken(token);
         await refreshSession();
         navigate("/dashboard", { replace: true });
       } catch (err) {
         clearSession();
         setError(err?.message || "Could not complete login.");
       } finally {
-        if (token) {
-          window.history.replaceState({}, "", window.location.pathname);
-        }
+        window.history.replaceState({}, "", window.location.pathname);
       }
     };
 
     finalize();
-  }, [clearSession, navigate, refreshSession, setToken]);
+  }, [clearSession, navigate, refreshSession]);
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[420px] flex-col justify-center px-4">

@@ -15,6 +15,11 @@ const snapshotSchema = new mongoose.Schema(
       index: true,
     },
 
+    displayName: {
+      type: String,
+      default: "",
+    },
+
     timeRange: {
       type: String,
       enum: ["short_term", "medium_term", "long_term"],
@@ -25,7 +30,7 @@ const snapshotSchema = new mongoose.Schema(
       {
         id: String,
         name: String,
-        imageUrl: String,
+        image: String,
         genres: [String],
       },
     ],
@@ -34,8 +39,9 @@ const snapshotSchema = new mongoose.Schema(
       {
         id: String,
         name: String,
-        artistNames: [String],
-        albumImageUrl: String,
+        artist: String,
+        image: String,
+        spotifyUrl: String,
       },
     ],
 
@@ -46,10 +52,19 @@ const snapshotSchema = new mongoose.Schema(
       depthScore: Number,
     },
 
+    aiReview: {
+      type: String,
+      default: "",
+    },
+
     insights: {
       tasteDriftScore: {
         type: Number,
         default: null,
+      },
+      tasteDriftMessage: {
+        type: String,
+        default: "",
       },
       topGenres: [
         {

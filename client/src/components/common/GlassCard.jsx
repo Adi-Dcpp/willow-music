@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useTheme } from "../../context/ThemeContext";
 
-export default function GlassCard({ className = "", children, hover = true, style = {} }) {
+export default function GlassCard({ className = "", children, hover = true, style = {}, ...props }) {
   const { theme } = useTheme();
 
   return (
@@ -15,6 +15,7 @@ export default function GlassCard({ className = "", children, hover = true, styl
         boxShadow: `0 20px 48px -20px ${theme.palette.accentSoft}, 0 1px 0 0 rgba(255,255,255,0.06) inset`,
         ...style,
       }}
+      {...props}
     >
       {children}
     </motion.div>

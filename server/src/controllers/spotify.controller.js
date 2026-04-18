@@ -136,7 +136,7 @@ const getTop = asyncHandler(async (req, res) => {
   const { timeRange = "medium_term", limit = 20 } = req.query;
   const parsedLimit = validateQuery(timeRange, limit);
 
-  const cacheKey = `${userId}_${timeRange}_${parsedLimit}_insights`;
+  const cacheKey = `${userId}_${timeRange}_${parsedLimit}_insights_v3`;
 
   const cachedData = getCache(cacheKey);
   if (cachedData) {
@@ -158,7 +158,11 @@ const getTop = asyncHandler(async (req, res) => {
     }),
   ]);
 
-  const result = buildUserSummary(topTracks?.items || topTracks, topArtists?.items || topArtists);
+  const result = buildUserSummary(
+    topTracks?.items || topTracks,
+    topArtists?.items || topArtists,
+    { trackDisplayCount: 20, artistDisplayCount: 10 },
+  );
 
   setCache(cacheKey, result);
 
