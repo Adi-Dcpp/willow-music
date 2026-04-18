@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Sora", "Manrope", "Space Grotesk", sans-serif;
+  background: #06090b;
+  color: #f8fafc;
+  overflow-x: hidden;
+}
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.16) 50%,
+    transparent 75%
+  );
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
