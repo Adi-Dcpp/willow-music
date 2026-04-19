@@ -25,12 +25,12 @@ const isProduction = process.env.NODE_ENV === "production";
 
 const normalizeOrigin = (value) => value?.trim().replace(/\/+$/, "");
 
-const authCookieOptions = {
+const getAuthCookieOptions = () => ({
   httpOnly: true,
-  sameSite: "none",
-  secure: true,
   path: "/",
-};
+  sameSite: isProduction ? "none" : "lax",
+  secure: isProduction,
+});
 
 const getFrontendUrl = () => {
   if (process.env.FRONTEND_URL) {
@@ -258,17 +258,11 @@ const spotifyCallback = asyncHandler(async (req, res) => {
   });
 
   res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
+    ...getAuthCookieOptions(),
   });
 
   res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
+    ...getAuthCookieOptions(),
   });
 
   console.log("[auth] cookies set", {
@@ -285,15 +279,15 @@ const spotifyCallback = asyncHandler(async (req, res) => {
 
 const logout = asyncHandler(async (req, res) => {
   res.clearCookie("accessToken", {
-    ...authCookieOptions,
+    ...getAuthCookieOptions(),
   });
 
   res.clearCookie("refreshToken", {
-    ...authCookieOptions,
+    ...getAuthCookieOptions(),
   });
 
   res.clearCookie("spotify_auth_state", {
-    ...authCookieOptions,
+    ...getAuthCookieOptions(),
   });
 
   return res.status(200).json({

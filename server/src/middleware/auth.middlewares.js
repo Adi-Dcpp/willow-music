@@ -7,9 +7,9 @@ const isProduction = process.env.NODE_ENV === "production";
 
 const authCookieOptions = {
   httpOnly: true,
-  secure: true,
-  sameSite: "none",
   path: "/",
+  sameSite: isProduction ? "none" : "lax",
+  secure: isProduction,
 };
 
 const issueAccessTokenFromRefresh = (req, res) => {
