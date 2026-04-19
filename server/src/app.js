@@ -14,6 +14,7 @@ import { rateLimiter } from "./middleware/rateLimiter.middlewares.js";
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
+const shouldLogRequests = !isProduction || process.env.DEBUG_REQUEST_LOGS === "1";
 
 const normalizeOrigin = (value) => value?.trim().replace(/\/+$/, "");
 
@@ -37,20 +38,22 @@ if (process.env.TRUST_PROXY === "1" || process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
-app.use((req, res, next) => {
-  console.log("[request]", {
-    method: req.method,
-    path: req.originalUrl,
-    origin: req.headers.origin || null,
-    referer: req.headers.referer || null,
-    host: req.headers.host || null,
-    userAgent: req.headers["user-agent"] || null,
-    hasCookieHeader: Boolean(req.headers.cookie),
-    hasAuthorizationHeader: Boolean(req.headers.authorization),
-  });
+if (shouldLogRequests) {
+  app.use((req, res, next) => {
+    console.log("[request]", {
+      method: req.method,
+      path: req.originalUrl,
+      origin: req.headers.origin || null,
+      referer: req.headers.referer || null,
+      host: req.headers.host || null,
+      userAgent: req.headers["user-agent"] || null,
+      hasCookieHeader: Boolean(req.headers.cookie),
+      hasAuthorizationHeader: Boolean(req.headers.authorization),
+    });
 
-  next();
-});
+    next();
+  });
+}
 
 // Security headers – applied before any routes.
 // HSTS tells browsers to always use HTTPS for this origin (resolves Chrome Safe Browsing warnings

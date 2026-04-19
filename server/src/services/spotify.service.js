@@ -8,14 +8,33 @@ const getSpotifyAuthHeader = () =>
     `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`,
   ).toString("base64");
 
+const normalizeUrl = (value) => value?.trim().replace(/\/+$/, "");
+
 const getSpotifyRedirectUri = () => {
-  if (process.env.BACKEND_URL) {
-    const normalizedBackendUrl = process.env.BACKEND_URL.replace(/\/+$/, "");
-    return `${normalizedBackendUrl}/api/auth/spotify/callback`;
+  const explicitRedirectUri = normalizeUrl(process.env.SPOTIFY_REDIRECT_URI);
+  const normalizedBackendUrl = normalizeUrl(process.env.BACKEND_URL);
+  const derivedRedirectUri = normalizedBackendUrl
+    ? `${normalizedBackendUrl}/api/auth/spotify/callback`
+    : null;
+
+  if (
+    process.env.NODE_ENV === "production" &&
+    explicitRedirectUri &&
+    derivedRedirectUri &&
+    explicitRedirectUri !== derivedRedirectUri
+  ) {
+    throw new ApiError(
+      500,
+      "SPOTIFY_REDIRECT_URI must match BACKEND_URL/api/auth/spotify/callback in production"
+    );
   }
 
-  if (process.env.SPOTIFY_REDIRECT_URI) {
-    return process.env.SPOTIFY_REDIRECT_URI;
+  if (explicitRedirectUri) {
+    return explicitRedirectUri;
+  }
+
+  if (derivedRedirectUri) {
+    return derivedRedirectUri;
   }
 
   throw new ApiError(500, "BACKEND_URL or SPOTIFY_REDIRECT_URI is required");

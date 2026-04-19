@@ -89,6 +89,21 @@ Set the Spotify redirect URI to the exact backend callback URL, for example:
 https://your-backend.onrender.com/api/auth/spotify/callback
 ```
 
+### Production Env Alignment (Render + Netlify)
+
+Use the exact values below for this deployment:
+
+- `VITE_API_BASE_URL=https://willow-axzs.onrender.com`
+- `FRONTEND_URL=https://enchanting-gaufre-27b905.netlify.app`
+- `SPOTIFY_REDIRECT_URI=https://willow-axzs.onrender.com/api/auth/spotify/callback`
+- `BACKEND_URL=https://willow-axzs.onrender.com`
+
+Important:
+
+- Keep `SPOTIFY_REDIRECT_URI` aligned with `BACKEND_URL + /api/auth/spotify/callback`.
+- Do not add `/api` to `VITE_API_BASE_URL`; the client app appends it automatically.
+- After changing any environment variable, trigger a redeploy on both Render and Netlify.
+
 ## Notes for Production Safety
 
 - Frontend and backend must use HTTPS in production

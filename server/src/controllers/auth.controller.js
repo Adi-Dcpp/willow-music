@@ -265,13 +265,15 @@ const spotifyCallback = asyncHandler(async (req, res) => {
     ...getAuthCookieOptions(),
   });
 
-  console.log("[auth] cookies set", {
-    userId: String(user._id),
-    spotifyUserId: user.spotifyUserId,
-    accessTokenCookie: true,
-    refreshTokenCookie: true,
-    redirectTo: `${frontendURL}/callback`,
-  });
+  if (!isProduction || process.env.DEBUG_AUTH_LOGS === "1") {
+    console.log("[auth] cookies set", {
+      userId: String(user._id),
+      spotifyUserId: user.spotifyUserId,
+      accessTokenCookie: true,
+      refreshTokenCookie: true,
+      redirectTo: `${frontendURL}/callback`,
+    });
+  }
 
   const redirectUrl = `${frontendURL}/callback`;
   return res.redirect(redirectUrl);
