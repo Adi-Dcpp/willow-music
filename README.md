@@ -2,6 +2,9 @@
 
 Willow is a full-stack music identity app that turns Spotify listening data into shareable insight cards, AI-generated personality copy, and public snapshot pages.
 
+## Demo 
+https://www.linkedin.com/posts/aditya-mandal-2438a5368_mern-fullstack-webdevelopment-ugcPost-7451712913201070081-WJTA/?utm_source=share&utm_medium=member_desktop&rcm=ACoAAFtBrRMBFCMvQQhV75ThNp_am_0VeebtZg0
+
 ## Stack
 
 - Frontend: React, Vite, Tailwind CSS, Framer Motion
